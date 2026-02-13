@@ -1,0 +1,11 @@
+.{
+    .name = .zpeg,
+    .version = "0.0.0",
+    .fingerprint = 0xba6b9cad13fd978f, 
+    .minimum_zig_version = "0.15.2",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
