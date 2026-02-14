@@ -163,7 +163,7 @@ pub const Node = union(enum) {
         end: Index,
         ref: []const u8,
 
-        pub fn str(self: *@This()) []const u8 {
+        pub fn str(self: @This()) []const u8 {
             return self.ref[self.start..self.end];
         }
     };
@@ -175,7 +175,7 @@ pub const Node = union(enum) {
 
         childs: List(Node),
 
-        pub fn str(self: *@This()) []const u8 {
+        pub fn str(self: @This()) []const u8 {
             return self.ref[self.start..self.end];
         }
     };
@@ -1017,7 +1017,7 @@ pub fn parseGrammar(self: *Parser) !Node {
     const allocator = self.arena.allocator();
     var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parseWHITESPACE());
+    _ = try self.parseWHITESPACE();
     try childs.append(allocator, try self.parseHeader());
 
     while (true) {
@@ -1025,8 +1025,8 @@ pub fn parseGrammar(self: *Parser) !Node {
         try childs.append(allocator, node);
     }
 
-    try childs.append(allocator, try self.parseFinal());
-    try childs.append(allocator, try self.parseEOF());
+    _ = try self.parseFinal();
+    _ = try self.parseEOF();
 
     return .{
         .grammar = .{
@@ -1043,7 +1043,7 @@ pub fn parseHeader(self: *Parser) !Node {
     const allocator = self.arena.allocator();
     var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parsePEG());
+    _ = try self.parsePEG();
     try childs.append(allocator, try self.parseIdentifier());
     try childs.append(allocator, try self.parseStartExpr());
 
@@ -1066,9 +1066,9 @@ pub fn parseDefinition(self: *Parser) !Node {
         try childs.append(allocator, self.parseAttribute() catch unreachable);
     }
     try childs.append(allocator, try self.parseIdentifier());
-    try childs.append(allocator, try self.parseIS());
+    _ = try self.parseIS();
     try childs.append(allocator, try self.parseExpression());
-    try childs.append(allocator, try self.parseSEMICOLON());
+    _ = try self.parseSEMICOLON();
 
     return .{ .definition = .{
         .start = start,
@@ -1088,7 +1088,7 @@ pub fn parseAttribute(self: *Parser) !Node {
     } else if (self.except(Parser.parseLEAF)) {
         try childs.append(allocator, self.parseLEAF() catch unreachable);
     }
-    try childs.append(allocator, try self.parseCOLON());
+    _ = try self.parseCOLON();
 
     return .{ .attribute = .{
         .start = start,
@@ -1105,7 +1105,7 @@ pub fn parseExpression(self: *Parser) anyerror!Node {
 
     try childs.append(allocator, try self.parseSequence());
     while (true) {
-        try childs.append(allocator, self.parseSLASH() catch break);
+        _ = self.parseSLASH() catch break;
         try childs.append(allocator, self.parseSequence() catch {
             _ = childs.pop();
             break;
@@ -1256,16 +1256,13 @@ pub fn parsePrimary(self: *Parser) !Node {
         vaild = true;
     }
     if (!vaild and self.except(Parser.parseOPEN)) {
-        try childs.append(allocator, self.parseOPEN() catch unreachable);
+        _ = self.parseOPEN() catch unreachable;
         if (self.except(Parser.parseExpression)) {
             try childs.append(allocator, self.parseExpression() catch unreachable);
-        } else {
-            _ = childs.pop();
         }
         if (self.except(Parser.parseCLOSE)) {
-            try childs.append(allocator, self.parseCLOSE() catch unreachable);
+            _ = self.parseCLOSE() catch unreachable;
         } else {
-            _ = childs.pop();
             _ = childs.pop();
         }
         vaild = true;
@@ -1304,23 +1301,23 @@ pub fn parseLiteral(self: *Parser) !Node {
 
     var vaild = false;
     if (!vaild and self.except(Parser.parseAPOSTROPH)) blk: {
-        try childs.append(allocator, self.parseAPOSTROPH() catch unreachable);
+        _ = self.parseAPOSTROPH() catch unreachable;
         while (true) {
             if (self.except(Parser.parseAPOSTROPH)) break;
             try childs.append(allocator, self.parseChar() catch break);
         }
-        try childs.append(allocator, self.parseAPOSTROPH() catch break :blk);
-        try childs.append(allocator, self.parseWHITESPACE() catch break :blk);
+        _ = self.parseAPOSTROPH() catch break :blk;
+        _ = self.parseWHITESPACE() catch break :blk;
         vaild = true;
     }
     if (!vaild and self.except(Parser.parseDAPOSTROPH)) blk: {
-        try childs.append(allocator, self.parseDAPOSTROPH() catch unreachable);
+        _ = self.parseDAPOSTROPH() catch unreachable;
         while (true) {
             if (self.except(Parser.parseDAPOSTROPH)) break;
             try childs.append(allocator, self.parseChar() catch break);
         }
-        try childs.append(allocator, self.parseDAPOSTROPH() catch break :blk);
-        try childs.append(allocator, self.parseWHITESPACE() catch break :blk);
+        _ = self.parseDAPOSTROPH() catch break :blk;
+        _ = self.parseWHITESPACE() catch break :blk;
         vaild = true;
     }
     if (!vaild) {
@@ -1343,13 +1340,13 @@ pub fn parseClass(self: *Parser) !Node {
     const allocator = self.arena.allocator();
     var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parseOPENB());
+    _=try self.parseOPENB();
     while (true) {
         if (self.except(Parser.parseCLOSEB)) break;
         try childs.append(allocator, self.parseChar() catch break);
     }
-    try childs.append(allocator, try self.parseCLOSEB());
-    try childs.append(allocator, try self.parseWHITESPACE());
+    _=try self.parseCLOSEB();
+    _=try self.parseWHITESPACE();
 
     return .{
         .class = .{
@@ -1369,7 +1366,7 @@ pub fn parseRange(self: *Parser) !Node {
     var vaild = false;
     if (!vaild and self.except(Parser.parseChar)) {
         try childs.append(allocator, try self.parseChar());
-        try childs.append(allocator, try self.parseTO());
+        _ = try self.parseTO();
         try childs.append(allocator, try self.parseChar());
         vaild = true;
     }
@@ -1397,9 +1394,9 @@ pub fn parseStartExpr(self: *Parser) !Node {
     const allocator = self.arena.allocator();
     var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parseOPEN());
+    _ = try self.parseOPEN();
     try childs.append(allocator, try self.parseExpression());
-    try childs.append(allocator, try self.parseCLOSE());
+    _ = try self.parseCLOSE();
 
     return .{
         .startexpr = .{
