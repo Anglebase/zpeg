@@ -1,0 +1,455 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
+const List = std.ArrayList;
+
+const CharClass = union(enum) {
+    char: u8,
+    range: struct {
+        start: u8,
+        end: u8,
+    },
+};
+
+const Parser = @This();
+const Index = usize;
+
+ref: []const u8,
+pos: Index,
+arena: ArenaAllocator,
+err_stack: List(struct { Index, []const u8 }),
+
+/// Create a parser.
+///
+/// Call the method 'deinit' when it is no longer in use.
+/// Caller should ensure that the `source`'s lifetime is longer than this parser.
+pub fn init(allocator: Allocator, source: []const u8) !Parser {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    return .{
+        .arena = arena,
+        .pos = 0,
+        .ref = source,
+        .err_stack = try .initCapacity(arena.allocator(), 0),
+    };
+}
+
+/// See `init`.
+pub fn deinit(self: *Parser) void {
+    self.arena.deinit();
+}
+
+pub fn reset(self: *Parser) void {
+    self.err_msg = null;
+    self.pos = 0;
+}
+
+/// Peek current charactor.
+fn peek(self: *Parser) ?u8 {
+    if (self.isEOF()) {
+        @branchHint(.cold);
+        return null;
+    }
+    return self.ref[self.pos];
+}
+
+fn substr(self: *Parser, start: Index, len: Index) ?[]const u8 {
+    const end = start + len;
+    if (end > self.ref.len) return null;
+    return self.ref[start..end];
+}
+
+/// Change the current position to the next character.
+fn advance(self: *Parser) void {
+    self.pos += 1;
+}
+
+fn store(self: *Parser) Index {
+    return self.pos;
+}
+
+fn restore(self: *Parser, pos: Index) void {
+    self.pos = pos;
+}
+
+fn alnum(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAlphanumeric(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn alpha(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAlphabetic(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn ascii(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAscii(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn control(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isControl(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn ddigit(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isDigit(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn digit(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isDigit(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn graph(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isPrint(self.ref[self.pos]) and !std.ascii.isWhitespace(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn lower(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isLower(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn print(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isPrint(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn punct(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAscii(self.ref[self.pos]) and
+        !std.ascii.isAlphanumeric(self.ref[self.pos]) and
+        !std.ascii.isWhitespace(self.ref[self.pos]))
+    {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn space(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isWhitespace(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn upper(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isUpper(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn wordchar(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAscii(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+}
+
+fn xdigit(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isHex(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn dot(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    self.advance();
+}
+
+/// ""
+fn exceptString(self: *Parser, string: []const u8) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    if (self.pos + string.len - 1 >= self.ref.len) return error.UnexceptEOF;
+
+    if (std.mem.eql(u8, self.ref[self.pos..(self.pos + string.len)], string)) {
+        self.pos += string.len;
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+/// []
+fn exceptChar(self: *Parser, charclass: []const u8) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    if (std.mem.containsAtLeast(
+        u8,
+        charclass,
+        1,
+        self.ref[self.pos..(self.pos + 1)],
+    )) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+/// &e
+fn @"and"(self: *Parser, item: anytype) !void {
+    const start = self.store();
+    defer self.restore(start);
+
+    const func = item.@"0";
+    const args = item.@"1";
+
+    _ = @call(.auto, func, .{self} ++ args) catch return error.UnexceptToken;
+}
+
+/// !e
+fn not(self: *Parser, item: anytype) !void {
+    const start = self.store();
+    defer self.restore(start);
+
+    const func = item.@"0";
+    const args = item.@"1";
+
+    _ = @call(.auto, func, .{self} ++ args) catch return;
+    return error.UnexceptToken;
+}
+
+/// e1 e2 ..
+fn sequence(self: *Parser, list: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, list.len);
+
+    inline for (list) |item| {
+        const func = item.@"0";
+        const args = item.@"1";
+        const func_info = @typeInfo(@TypeOf(func)).@"fn";
+        switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => try @call(.auto, func, .{self} ++ args),
+            Node => {
+                const node: Node = try @call(.auto, func, .{self} ++ args);
+                try result.append(allocator, node);
+            },
+            List(Node) => {
+                var node_list: List(Node) = try @call(.auto, func, .{self} ++ args);
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+            },
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+/// e1 | e2 | ..
+fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, list.len);
+
+    inline for (list) |item| {
+        const func = item.@"0";
+        const args = item.@"1";
+        const func_info = @typeInfo(@TypeOf(func)).@"fn";
+        blk: switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => {
+                @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break :blk,
+                };
+                return result;
+            },
+            Node => {
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break :blk,
+                };
+                try result.append(allocator, node);
+                return result;
+            },
+            List(Node) => {
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break :blk,
+                };
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+                return result;
+            },
+            else => unreachable,
+        }
+    }
+    return error.NoMatches;
+}
+
+/// e*
+fn repeat(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 5);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    while (true) {
+        switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                .OutOfMemory => return err,
+                else => break,
+            },
+            Node => {
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break,
+                };
+                try result.append(allocator, node);
+            },
+            List(Node) => {
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break,
+                };
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+            },
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+/// e+
+fn repeatPlus(self: *Parser, item: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 5);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+        void => try @call(.auto, func, .{self} ++ args),
+        Node => {
+            const node: Node = try @call(.auto, func, .{self} ++ args);
+            try result.append(allocator, node);
+        },
+        List(Node) => {
+            var node_list: List(Node) = try @call(.auto, func, .{self} ++ args);
+            defer node_list.deinit(allocator);
+            try result.appendSlice(allocator, node_list.items);
+        },
+        else => unreachable,
+    }
+
+    while (true) {
+        switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                .OutOfMemory => return err,
+                else => break,
+            },
+            Node => {
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break,
+                };
+                try result.append(allocator, node);
+            },
+            List(Node) => {
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                    .OutOfMemory => return err,
+                    else => break,
+                };
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+            },
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+/// e?
+fn optional(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 5);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+        void => @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+            .OutOfMemory => return err,
+            else => return result,
+        },
+        Node => {
+            const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                .OutOfMemory => return err,
+                else => return result,
+            };
+            try result.append(allocator, node);
+        },
+        List(Node) => {
+            var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
+                .OutOfMemory => return err,
+                else => return result,
+            };
+            defer node_list.deinit(allocator);
+            try result.appendSlice(allocator, node_list.items);
+        },
+        else => unreachable,
+    }
+    return result;
+}

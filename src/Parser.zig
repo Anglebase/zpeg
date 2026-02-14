@@ -3,24 +3,33 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const List = std.ArrayList;
 
+const CharClass = union(enum) {
+    char: u8,
+    range: struct {
+        start: u8,
+        end: u8,
+    },
+};
+
 const Parser = @This();
 const Index = usize;
 
 ref: []const u8,
 pos: Index,
 arena: ArenaAllocator,
-err_msg: ?[]const u8,
+err_stack: List(struct { Index, []const u8 }),
 
 /// Create a parser.
 ///
 /// Call the method 'deinit' when it is no longer in use.
 /// Caller should ensure that the `source`'s lifetime is longer than this parser.
-pub fn init(allocator: Allocator, source: []const u8) Parser {
+pub fn init(allocator: Allocator, source: []const u8) !Parser {
+    var arena = std.heap.ArenaAllocator.init(allocator);
     return .{
-        .arena = ArenaAllocator.init(allocator),
-        .err_msg = null,
+        .arena = arena,
         .pos = 0,
         .ref = source,
+        .err_stack = try .initCapacity(arena.allocator(), 0),
     };
 }
 
@@ -32,29 +41,6 @@ pub fn deinit(self: *Parser) void {
 pub fn reset(self: *Parser) void {
     self.err_msg = null;
     self.pos = 0;
-}
-
-fn printError(self: *Parser, comptime fmt: []const u8, args: anytype) !void {
-    const allocator = self.arena.allocator();
-    self.err_msg = try std.fmt.allocPrint(allocator, fmt, args);
-}
-
-fn isEOF(self: *Parser) bool {
-    return self.pos >= self.ref.len;
-}
-
-fn exceptNotEOF(self: *Parser) !void {
-    if (self.isEOF()) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptEOF;
-    }
-}
-
-fn exceptEOF(self: *Parser) !void {
-    if (!self.isEOF()) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.ExceptEOF;
-    }
 }
 
 /// Peek current charactor.
@@ -85,33 +71,435 @@ fn restore(self: *Parser, pos: Index) void {
     self.pos = pos;
 }
 
-fn except(self: *Parser, f: anytype) bool {
-    const current = self.store();
-    defer self.restore(current);
+fn alnum(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAlphanumeric(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
 
-    _ = f(self) catch return false;
-    return true;
+fn alpha(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAlphabetic(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn ascii(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAscii(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn control(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isControl(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn ddigit(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isDigit(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn digit(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isDigit(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn graph(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isPrint(self.ref[self.pos]) and !std.ascii.isWhitespace(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn lower(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isLower(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn print(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isPrint(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn punct(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAscii(self.ref[self.pos]) and
+        !std.ascii.isAlphanumeric(self.ref[self.pos]) and
+        !std.ascii.isWhitespace(self.ref[self.pos]))
+    {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn space(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isWhitespace(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn upper(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isUpper(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn wordchar(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isAscii(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+}
+
+fn xdigit(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    if (std.ascii.isHex(self.ref[self.pos])) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+fn dot(self: *Parser) !void {
+    if (self.pos >= self.ref.len) return error.UnexceptEOF;
+    self.advance();
+}
+
+/// ""
+fn exceptString(self: *Parser, string: []const u8) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    if (self.pos + string.len - 1 >= self.ref.len) return error.UnexceptEOF;
+
+    if (std.mem.eql(u8, self.ref[self.pos..(self.pos + string.len)], string)) {
+        self.pos += string.len;
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+/// []
+fn exceptChar(self: *Parser, charclass: []const u8) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    if (std.mem.containsAtLeast(
+        u8,
+        charclass,
+        1,
+        self.ref[self.pos..(self.pos + 1)],
+    )) {
+        self.advance();
+        return;
+    }
+    return error.UnexceptChar;
+}
+
+/// &e
+fn @"and"(self: *Parser, item: anytype) !void {
+    const start = self.store();
+    defer self.restore(start);
+
+    const func = item.@"0";
+    const args = item.@"1";
+
+    _ = @call(.auto, func, .{self} ++ args) catch return error.UnexceptToken;
+}
+
+/// !e
+fn not(self: *Parser, item: anytype) !void {
+    const start = self.store();
+    defer self.restore(start);
+
+    const func = item.@"0";
+    const args = item.@"1";
+
+    _ = @call(.auto, func, .{self} ++ args) catch return;
+    return error.UnexceptToken;
+}
+
+/// e1 e2 ..
+fn sequence(self: *Parser, list: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, list.len);
+
+    inline for (list) |item| {
+        const func = item.@"0";
+        const args = item.@"1";
+        const func_info = @typeInfo(@TypeOf(func)).@"fn";
+        switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => try @call(.auto, func, .{self} ++ args),
+            Node => {
+                const node: Node = try @call(.auto, func, .{self} ++ args);
+                try result.append(allocator, node);
+            },
+            List(Node) => {
+                var node_list: List(Node) = try @call(.auto, func, .{self} ++ args);
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+            },
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+/// e1 | e2 | ..
+fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, list.len);
+
+    inline for (list) |item| {
+        const func = item.@"0";
+        const args = item.@"1";
+        const func_info = @typeInfo(@TypeOf(func)).@"fn";
+        blk: switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => {
+                @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break :blk;
+                };
+                return result;
+            },
+            Node => {
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break :blk;
+                };
+                try result.append(allocator, node);
+                return result;
+            },
+            List(Node) => {
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break :blk;
+                };
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+                return result;
+            },
+            else => unreachable,
+        }
+    }
+    return error.NoMatches;
+}
+
+/// e*
+fn repeat(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 5);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    while (true) {
+        switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return @errorCast(err);
+                }
+                break;
+            },
+            Node => {
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
+                };
+                try result.append(allocator, node);
+            },
+            List(Node) => {
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
+                };
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+            },
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+/// e+
+fn repeatPlus(self: *Parser, item: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 5);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+        void => try @call(.auto, func, .{self} ++ args),
+        Node => {
+            const node: Node = try @call(.auto, func, .{self} ++ args);
+            try result.append(allocator, node);
+        },
+        List(Node) => {
+            var node_list: List(Node) = try @call(.auto, func, .{self} ++ args);
+            defer node_list.deinit(allocator);
+            try result.appendSlice(allocator, node_list.items);
+        },
+        else => unreachable,
+    }
+
+    while (true) {
+        switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+            void => @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return @errorCast(err);
+                }
+                break;
+            },
+            Node => {
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
+                };
+                try result.append(allocator, node);
+            },
+            List(Node) => {
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
+                };
+                defer node_list.deinit(allocator);
+                try result.appendSlice(allocator, node_list.items);
+            },
+            else => unreachable,
+        }
+    }
+    return result;
+}
+
+/// e?
+fn optional(self: *Parser, item: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 5);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+        void => @call(.auto, func, .{self} ++ args) catch |err| {
+            if (err == error.OutOfMemory) {
+                return err;
+            }
+            return result;
+        },
+        Node => {
+            const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return err;
+                }
+                return result;
+            };
+            try result.append(allocator, node);
+        },
+        List(Node) => {
+            var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return err;
+                }
+                return result;
+            };
+            defer node_list.deinit(allocator);
+            try result.appendSlice(allocator, node_list.items);
+        },
+        else => unreachable,
+    }
+    return result;
 }
 
 pub const Node = union(enum) {
-    eof,
-    eol,
-    comment,
-    whitespace,
-    is,
-    final,
-    semicolon,
-    colon,
-    slash,
-    open,
-    close,
-    to,
-    openb,
-    closeb,
-    apostroph,
-    dapostroph,
-    peg,
-    hexdigit,
+    pub const Leaf = struct {
+        start: Index,
+        end: Index,
+        ref: []const u8,
+
+        pub fn str(self: @This()) []const u8 {
+            return self.ref[self.start..self.end];
+        }
+    };
+
+    pub const Value = struct {
+        start: Index,
+        end: Index,
+        ref: []const u8,
+
+        childs: List(Node),
+
+        pub fn str(self: @This()) []const u8 {
+            return self.ref[self.start..self.end];
+        }
+    };
 
     xdigit: Leaf,
     alnum: Leaf,
@@ -157,918 +545,57 @@ pub const Node = union(enum) {
     startexpr: Value,
     identifier: Value,
     char: Value,
-
-    pub const Leaf = struct {
-        start: Index,
-        end: Index,
-        ref: []const u8,
-
-        pub fn str(self: @This()) []const u8 {
-            return self.ref[self.start..self.end];
-        }
-    };
-
-    pub const Value = struct {
-        start: Index,
-        end: Index,
-        ref: []const u8,
-
-        childs: List(Node),
-
-        pub fn str(self: @This()) []const u8 {
-            return self.ref[self.start..self.end];
-        }
-    };
 };
 
-fn parseEOF(self: *Parser) !Node {
+fn parseGrammar(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    if (self.isEOF()) {
-        return .eof;
-    }
-    try self.printError("At pos {d}.\n", .{self.pos});
-    return error.UnexceptChar;
+    const childs = try self.sequence(.{
+        .{ Parser.parseWHITESPACE, .{} },
+        .{ Parser.parseHeader, .{} },
+        .{ Parser.repeat, .{.{ Parser.parseDefinition, .{} }} },
+        .{ Parser.parseFinal, .{} },
+        .{ Parser.parseEOF, .{} },
+    });
+
+    return .{ .grammar = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
 
-fn parseEOL(self: *Parser) !Node {
+fn parseHeader(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    try self.exceptNotEOF();
+    const childs = try self.sequence(.{
+        .{ Parser.parsePEG, .{} },
+        .{ Parser.parseIdentifier, .{} },
+        .{ Parser.parseStartExpr, .{} },
+    });
 
-    if (std.mem.eql(u8, self.substr(start, 2) orelse return error.UnexceptEOF, "\n\r")) {
-        self.advance();
-        self.advance();
-    } else if (self.peek().? == '\r') {
-        self.advance();
-    } else if (self.peek().? == '\n') {
-        self.advance();
-    } else {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-
-    return .eol;
+    return .{ .header = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
 
-fn parseCOMMENT(self: *Parser) !Node {
+fn parseDefinition(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    try self.exceptNotEOF();
-
-    if (self.peek().? != '#') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-
-    loop: while (true) : (self.advance()) {
-        if (self.except(Parser.parseEOL)) {
-            break :loop;
-        }
-        if (self.isEOF()) {
-            break :loop;
-        }
-    }
-
-    _ = try self.parseEOL();
-
-    return .comment;
-}
-
-fn parseWHITESPACE(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    loop: while (true) {
-        if (self.peek() == null) {
-            break :loop;
-        } else if (self.peek().? == ' ') {
-            self.advance();
-            continue :loop;
-        } else if (self.peek().? == '\t') {
-            self.advance();
-            continue :loop;
-        } else if (self.except(Parser.parseEOL)) {
-            _ = try self.parseEOL();
-            continue :loop;
-        } else if (self.except(Parser.parseCOMMENT)) {
-            _ = try self.parseCOMMENT();
-            continue :loop;
-        } else {
-            break :loop;
-        }
-    }
-
-    return .whitespace;
-}
-
-fn parseXDIGIT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<xdigit>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .xdigit = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-
-fn parseALNUM(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<alnum>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .alnum = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseALPHA(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<alpha>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .alpha = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseASCII(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<ascii>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .ascii = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseCONTROL(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<control>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .control = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseDDIGIT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<ddigit>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .ddigit = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseDIGIT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<digit>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .digit = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseGRAPH(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<graph>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .graph = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseLOWER(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<lower>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .lower = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parsePRINTABLE(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<print>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .print = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parsePUNCT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<punct>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .punct = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseSPACE(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<space>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .space = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseUPPER(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<upper>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .upper = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseWORDCHAR(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<wordchar>";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .wordchar = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseIS(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "<-";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .is;
-}
-fn parseVOID(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "void";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .void = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseLEAF(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "leaf";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .leaf = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseSEMICOLON(self: *Parser) !Node {
-    const start = self.store();
-    std.debug.print("Pos: {d}\n", .{self.pos});
-    errdefer self.restore(start);
-
-    const str = ";";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .semicolon;
-}
-fn parseCOLON(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = ":";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .colon;
-}
-fn parseSLASH(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "/";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .slash;
-}
-fn parseAND(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "&";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .@"and" = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseNOT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "!";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .not = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseQUESTION(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "?";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .question = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseSTAR(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "*";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .star = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parsePLUS(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "+";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .plus = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-fn parseOPEN(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "(";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .open;
-}
-fn parseCLOSE(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = ")";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .close;
-}
-fn parseDOT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = ".";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .{
-        .dot = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-
-fn parseTO(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "-";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    return .to;
-}
-fn parseOPENB(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "[";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    return .openb;
-}
-fn parseCLOSEB(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "]";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    return .closeb;
-}
-fn parseAPOSTROPH(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "'";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    return .apostroph;
-}
-fn parseDAPOSTROPH(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "\"";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    return .dapostroph;
-}
-
-fn parsePEG(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const str = "PEG";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-
-    const ch = self.peek() orelse return error.UnexceptEOF;
-    if (ch == '_' or ch == ':' or std.ascii.isAlphanumeric(ch)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-
-    _ = try self.parseWHITESPACE();
-
-    return .peg;
-}
-
-fn parseHexDigit(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    const ch = self.peek() orelse return error.UnexceptEOF;
-    if (!(('0' <= ch and ch <= '9') or ('A' <= ch and ch <= 'F') or ('a' <= ch and ch <= 'f'))) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-
-    return .hexdigit;
-}
-
-fn parseCharUnescaped(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    if (self.peek() != null and self.peek().? == '\\') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    try self.exceptNotEOF();
-    self.advance();
-
-    return .{
-        .charunescaped = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-
-pub fn parseGrammar(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
-
-    _ = try self.parseWHITESPACE();
-    try childs.append(allocator, try self.parseHeader());
-
-    while (true) {
-        const node = self.parseDefinition() catch break;
-        try childs.append(allocator, node);
-    }
-
-    _ = try self.parseFinal();
-    _ = try self.parseEOF();
-
-    return .{
-        .grammar = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
-}
-pub fn parseHeader(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
-
-    _ = try self.parsePEG();
-    try childs.append(allocator, try self.parseIdentifier());
-    try childs.append(allocator, try self.parseStartExpr());
-
-    return .{
-        .header = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
-}
-pub fn parseDefinition(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
-
-    if (self.except(Parser.parseAttribute)) {
-        try childs.append(allocator, self.parseAttribute() catch unreachable);
-    }
-    try childs.append(allocator, try self.parseIdentifier());
-    _ = try self.parseIS();
-    try childs.append(allocator, try self.parseExpression());
-    _ = try self.parseSEMICOLON();
+    const childs = try self.sequence(.{
+        .{ Parser.optional, .{.{ Parser.parseAttribute, .{} }} },
+        .{ Parser.parseIdentifier, .{} },
+        .{ Parser.parseIS, .{} },
+        .{ Parser.parseExpression, .{} },
+        .{ Parser.parseSEMICOLON, .{} },
+    });
 
     return .{ .definition = .{
         .start = start,
@@ -1077,18 +604,18 @@ pub fn parseDefinition(self: *Parser) !Node {
         .childs = childs,
     } };
 }
-pub fn parseAttribute(self: *Parser) !Node {
+
+fn parseAttribute(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    if (self.except(Parser.parseVOID)) {
-        try childs.append(allocator, self.parseVOID() catch unreachable);
-    } else if (self.except(Parser.parseLEAF)) {
-        try childs.append(allocator, self.parseLEAF() catch unreachable);
-    }
-    _ = try self.parseCOLON();
+    const childs = try self.sequence(.{
+        .{ Parser.optional, .{.{ Parser.choice, .{.{
+            .{ Parser.parseVOID, .{} },
+            .{ Parser.parseLEAF, .{} },
+        }} }} },
+        .{ Parser.parseCOLON, .{} },
+    });
 
     return .{ .attribute = .{
         .start = start,
@@ -1097,529 +624,886 @@ pub fn parseAttribute(self: *Parser) !Node {
         .childs = childs,
     } };
 }
-pub fn parseExpression(self: *Parser) anyerror!Node {
+
+fn parseExpression(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parseSequence());
-    while (true) {
-        _ = self.parseSLASH() catch break;
-        try childs.append(allocator, self.parseSequence() catch {
-            _ = childs.pop();
-            break;
-        });
-    }
+    const childs = try self.sequence(.{
+        .{ Parser.parseSequence, .{} },
+        .{ Parser.repeat, .{.{ Parser.sequence, .{.{
+            .{ Parser.parseSLASH, .{} },
+            .{ Parser.parseSequence, .{} },
+        }} }} },
+    });
 
-    return .{
-        .expression = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .expression = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseSequence(self: *Parser) !Node {
+
+fn parseSequence(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parsePrefix());
-    while (true) {
-        try childs.append(allocator, self.parsePrefix() catch break);
-    }
+    const childs = try self.repeatPlus(.{ Parser.parsePrefix, .{} });
 
-    return .{
-        .sequence = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .sequence = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parsePrefix(self: *Parser) !Node {
+
+fn parsePrefix(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    if (self.except(Parser.parseAND)) {
-        try childs.append(allocator, self.parseAND() catch unreachable);
-    } else if (self.except(Parser.parseNOT)) {
-        try childs.append(allocator, self.parseNOT() catch unreachable);
-    }
+    const childs = try self.sequence(.{
+        .{ Parser.optional, .{.{ Parser.choice, .{.{
+            .{ Parser.parseAND, .{} },
+            .{ Parser.parseNOT, .{} },
+        }} }} },
+        .{ Parser.parseSuffix, .{} },
+    });
 
-    try childs.append(allocator, try self.parseSuffix());
-
-    return .{
-        .prefix = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .prefix = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseSuffix(self: *Parser) !Node {
+
+fn parseSuffix(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    try childs.append(allocator, try self.parsePrimary());
-    if (self.except(Parser.parseQUESTION)) {
-        try childs.append(allocator, self.parseQUESTION() catch unreachable);
-    } else if (self.except(Parser.parseSTAR)) {
-        try childs.append(allocator, self.parseSTAR() catch unreachable);
-    } else if (self.except(Parser.parsePLUS)) {
-        try childs.append(allocator, self.parsePLUS() catch unreachable);
-    }
+    const childs = try self.sequence(.{
+        .{ Parser.parsePrimary, .{} },
+        .{ Parser.optional, .{.{ Parser.choice, .{.{
+            .{ Parser.parseQUESTION, .{} },
+            .{ Parser.parseSTAR, .{} },
+            .{ Parser.parsePLUS, .{} },
+        }} }} },
+    });
 
-    return .{
-        .suffix = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .suffix = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parsePrimary(self: *Parser) !Node {
+
+fn parsePrimary(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    var vaild = false;
-    if (!vaild and self.except(Parser.parseALNUM)) {
-        try childs.append(allocator, self.parseALNUM() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseALPHA)) {
-        try childs.append(allocator, self.parseALPHA() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseASCII)) {
-        try childs.append(allocator, self.parseASCII() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseCONTROL)) {
-        try childs.append(allocator, self.parseCONTROL() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseDDIGIT)) {
-        try childs.append(allocator, self.parseDDIGIT() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseDIGIT)) {
-        try childs.append(allocator, self.parseDIGIT() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseGRAPH)) {
-        try childs.append(allocator, self.parseGRAPH() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseLOWER)) {
-        try childs.append(allocator, self.parseLOWER() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parsePRINTABLE)) {
-        try childs.append(allocator, self.parsePRINTABLE() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parsePUNCT)) {
-        try childs.append(allocator, self.parsePUNCT() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseSPACE)) {
-        try childs.append(allocator, self.parseSPACE() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseUPPER)) {
-        try childs.append(allocator, self.parseUPPER() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseWORDCHAR)) {
-        try childs.append(allocator, self.parseWORDCHAR() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseXDIGIT)) {
-        try childs.append(allocator, self.parseXDIGIT() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseIdentifier)) {
-        try childs.append(allocator, self.parseIdentifier() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseOPEN)) {
-        _ = self.parseOPEN() catch unreachable;
-        if (self.except(Parser.parseExpression)) {
-            try childs.append(allocator, self.parseExpression() catch unreachable);
-        }
-        if (self.except(Parser.parseCLOSE)) {
-            _ = self.parseCLOSE() catch unreachable;
-        } else {
-            _ = childs.pop();
-        }
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseLiteral)) {
-        try childs.append(allocator, self.parseLiteral() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseClass)) {
-        try childs.append(allocator, self.parseClass() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseDOT)) {
-        try childs.append(allocator, self.parseDOT() catch unreachable);
-        vaild = true;
-    }
-    if (!vaild) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
+    const childs = try self.choice(.{
+        .{ Parser.parseALNUM, .{} },
+        .{ Parser.parseALPHA, .{} },
+        .{ Parser.parseASCII, .{} },
+        .{ Parser.parseCONTROL, .{} },
+        .{ Parser.parseDDIGIT, .{} },
+        .{ Parser.parseDIGIT, .{} },
+        .{ Parser.parseGRAPH, .{} },
+        .{ Parser.parseLOWER, .{} },
+        .{ Parser.parsePRINTABLE, .{} },
+        .{ Parser.parsePUNCT, .{} },
+        .{ Parser.parseSPACE, .{} },
+        .{ Parser.parseUPPER, .{} },
+        .{ Parser.parseWORDCHAR, .{} },
+        .{ Parser.parseXDIGIT, .{} },
+        .{ Parser.parseIdentifier, .{} },
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseOPEN, .{} },
+            .{ Parser.parseExpression, .{} },
+            .{ Parser.parseCLOSE, .{} },
+        }} },
+        .{ Parser.parseLiteral, .{} },
+        .{ Parser.parseClass, .{} },
+        .{ Parser.parseDOT, .{} },
+    });
 
-    return .{
-        .primary = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .primary = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseLiteral(self: *Parser) !Node {
+
+fn parseLiteral(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    var vaild = false;
-    if (!vaild and self.except(Parser.parseAPOSTROPH)) blk: {
-        _ = self.parseAPOSTROPH() catch unreachable;
-        while (true) {
-            if (self.except(Parser.parseAPOSTROPH)) break;
-            try childs.append(allocator, self.parseChar() catch break);
-        }
-        _ = self.parseAPOSTROPH() catch break :blk;
-        _ = self.parseWHITESPACE() catch break :blk;
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseDAPOSTROPH)) blk: {
-        _ = self.parseDAPOSTROPH() catch unreachable;
-        while (true) {
-            if (self.except(Parser.parseDAPOSTROPH)) break;
-            try childs.append(allocator, self.parseChar() catch break);
-        }
-        _ = self.parseDAPOSTROPH() catch break :blk;
-        _ = self.parseWHITESPACE() catch break :blk;
-        vaild = true;
-    }
-    if (!vaild) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
+    const childs = try self.choice(.{
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseAPOSTROPH, .{} },
+            .{ Parser.repeat, .{.{ Parser.sequence, .{.{
+                .{ Parser.not, .{.{ Parser.parseAPOSTROPH, .{} }} },
+                .{ Parser.parseChar, .{} },
+            }} }} },
+            .{ Parser.parseAPOSTROPH, .{} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseDAPOSTROPH, .{} },
+            .{ Parser.repeat, .{.{ Parser.sequence, .{.{
+                .{ Parser.not, .{.{ Parser.parseDAPOSTROPH, .{} }} },
+                .{ Parser.parseChar, .{} },
+            }} }} },
+            .{ Parser.parseDAPOSTROPH, .{} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    });
 
-    return .{
-        .literal = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .literal = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseClass(self: *Parser) !Node {
+
+fn parseClass(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    _=try self.parseOPENB();
-    while (true) {
-        if (self.except(Parser.parseCLOSEB)) break;
-        try childs.append(allocator, self.parseChar() catch break);
-    }
-    _=try self.parseCLOSEB();
-    _=try self.parseWHITESPACE();
+    const childs = try self.sequence(.{
+        .{ Parser.parseOPENB, .{} },
+        .{ Parser.repeat, .{.{ Parser.sequence, .{.{
+            .{ Parser.not, .{.{ Parser.parseCLOSEB, .{} }} },
+            .{ Parser.parseRange, .{} },
+        }} }} },
+        .{ Parser.parseCLOSEB, .{} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
 
-    return .{
-        .class = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .class = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseRange(self: *Parser) !Node {
+
+fn parseRange(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    var vaild = false;
-    if (!vaild and self.except(Parser.parseChar)) {
-        try childs.append(allocator, try self.parseChar());
-        _ = try self.parseTO();
-        try childs.append(allocator, try self.parseChar());
-        vaild = true;
-    }
-    if (!vaild and self.except(Parser.parseChar)) {
-        try childs.append(allocator, try self.parseChar());
-        vaild = true;
-    }
-    if (!vaild) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
+    const childs = try self.choice(.{
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseChar, .{} },
+            .{ Parser.parseTO, .{} },
+            .{ Parser.parseChar, .{} },
+        }} },
+        .{ Parser.parseChar, .{} },
+    });
 
-    return .{
-        .range = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .range = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseStartExpr(self: *Parser) !Node {
+
+fn parseStartExpr(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    _ = try self.parseOPEN();
-    try childs.append(allocator, try self.parseExpression());
-    _ = try self.parseCLOSE();
+    const childs = try self.sequence(.{
+        .{ Parser.parseOPEN, .{} },
+        .{ Parser.parseExpression, .{} },
+        .{ Parser.parseCLOSE, .{} },
+    });
 
-    return .{
-        .startexpr = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .startexpr = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseFinal(self: *Parser) !Node {
+
+fn parseIdentifier(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const str = "END";
-    if (!std.mem.eql(u8, self.substr(start, str.len) orelse return error.UnexceptEOF, str)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    inline for (str) |_| {
-        self.advance();
-    }
-    _ = try self.parseWHITESPACE();
-    _ = try self.parseSEMICOLON();
-    _ = try self.parseWHITESPACE();
+    const childs = try self.sequence(.{
+        .{ Parser.parseIdent, .{} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
 
-    return .final;
+    return .{ .identifier = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseIdentifier(self: *Parser) !Node {
+
+fn parseChar(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.parseIdent();
-    _ = try self.parseWHITESPACE();
+    const childs = try self.choice(.{
+        .{ Parser.parseCharSpecial, .{} },
+        .{ Parser.parseCharOctalFull, .{} },
+        .{ Parser.parseCharOctalPart, .{} },
+        .{ Parser.parseCharUnicode, .{} },
+        .{ Parser.parseCharUnescaped, .{} },
+    });
 
-    return .{
-        .ident = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
+    return .{ .char = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    } };
 }
-pub fn parseIdent(self: *Parser) !Node {
+
+fn parseIdent(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const ch = self.peek() orelse return error.UnexceptEOF;
-    if (ch != '_' and ch != ':' and !std.ascii.isAlphabetic(ch)) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    while (true) : (self.advance()) {
-        const c = self.peek() orelse break;
-        if (c != '_' and c != ':' and !std.ascii.isAlphanumeric(c)) {
-            break;
-        }
-    }
+    _ = try self.sequence(.{
+        .{ Parser.choice, .{.{
+            .{ Parser.exceptChar, .{"_:"} },
+            .{ Parser.alpha, .{} },
+        }} },
+        .{ Parser.repeat, .{.{ Parser.choice, .{.{
+            .{ Parser.exceptChar, .{"_:"} },
+            .{ Parser.alnum, .{} },
+        }} }} },
+    });
 
-    return .{
-        .ident = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
+    return .{ .ident = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
 }
-pub fn parseChar(self: *Parser) !Node {
+
+fn parseCharSpecial(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
-    const allocator = self.arena.allocator();
-    var childs = try List(Node).initCapacity(allocator, 10);
 
-    if (self.except(Parser.parseCharSpecial)) {
-        try childs.append(allocator, self.parseCharSpecial() catch unreachable);
-    } else if (self.except(Parser.parseCharOctalFull)) {
-        try childs.append(allocator, self.parseCharOctalFull() catch unreachable);
-    } else if (self.except(Parser.parseCharOctalPart)) {
-        try childs.append(allocator, self.parseCharOctalPart() catch unreachable);
-    } else if (self.except(Parser.parseCharUnicode)) {
-        try childs.append(allocator, self.parseCharUnicode() catch unreachable);
-    } else if (self.except(Parser.parseCharUnescaped)) {
-        try childs.append(allocator, self.parseCharUnescaped() catch unreachable);
-    } else {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptSymbol;
-    }
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"\\"} },
+        .{ Parser.exceptChar, .{"nrt'\"[]\\"} },
+    });
 
-    return .{
-        .char = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-            .childs = childs,
-        },
-    };
+    return .{ .charspecial = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
 }
-pub fn parseCharSpecial(self: *Parser) !Node {
+
+fn parseCharOctalFull(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    if ((self.peek() orelse return error.UnexceptEOF) != '\\') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    const group = "nrt'\"[]\\";
-    if (!std.mem.containsAtLeast(
-        u8,
-        group,
-        1,
-        self.substr(self.pos, 1) orelse return error.UnexceptEOF,
-    )) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    return .{
-        .charspecial = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"\\"} },
+        .{ Parser.exceptChar, .{"012"} },
+        .{ Parser.exceptChar, .{"01234567"} },
+        .{ Parser.exceptChar, .{"01234567"} },
+    });
+
+    return .{ .charoctalfull = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
 }
-pub fn parseCharOctalFull(self: *Parser) !Node {
+
+fn parseCharOctalPart(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    if ((self.peek() orelse return error.UnexceptEOF) != '\\') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    const c1 = self.peek() orelse return error.UnexceptEOF;
-    if (!('0' <= c1 and c1 <= '2')) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    const c2 = self.peek() orelse return error.UnexceptEOF;
-    if (!('0' <= c2 and c2 <= '7')) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    const c3 = self.peek() orelse return error.UnexceptEOF;
-    if (!('0' <= c3 and c3 <= '7')) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"\\"} },
+        .{ Parser.exceptChar, .{"01234567"} },
+        .{ Parser.optional, .{.{ Parser.exceptChar, .{"01234567"} }} },
+    });
 
-    return .{
-        .charoctalfull = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
+    return .{ .charoctalpart = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
 }
-pub fn parseCharOctalPart(self: *Parser) !Node {
+
+fn parseCharUnicode(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    if ((self.peek() orelse return error.UnexceptEOF) != '\\') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    const c1 = self.peek() orelse return error.UnexceptEOF;
-    if (!('0' <= c1 and c1 <= '7')) {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    const c2 = self.peek() orelse return error.UnexceptEOF;
-    if ('0' <= c2 and c2 <= '7') {
-        self.advance();
-    }
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"\\"} },
+        .{ Parser.exceptString, .{"u"} },
+        .{ Parser.parseHexDigit, .{} },
+        .{ Parser.optional, .{.{ Parser.sequence, .{.{
+            .{ Parser.parseHexDigit, .{} },
+            .{ Parser.optional, .{.{ Parser.sequence, .{.{
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.optional, .{.{ Parser.parseHexDigit, .{} }} },
+            }} }} },
+        }} }} },
+    });
 
-    return .{
-        .charoctalpart = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
+    return .{ .charunicode = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
 }
-pub fn parseCharUnicode(self: *Parser) !Node {
+
+fn parseCharUnescaped(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    if ((self.peek() orelse return error.UnexceptEOF) != '\\') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
-    if ((self.peek() orelse return error.UnexceptEOF) != 'u') {
-        try self.printError("At pos {d}.\n", .{self.pos});
-        return error.UnexceptChar;
-    }
-    self.advance();
+    _ = try self.sequence(.{
+        .{ Parser.not, .{.{ Parser.exceptString, .{"\\"} }} },
+        .{ Parser.dot, .{} },
+    });
 
-    _ = try self.parseHexDigit();
-    if (self.except(Parser.parseHexDigit)) {
-        _ = self.parseHexDigit() catch unreachable;
-        if (self.except(Parser.parseHexDigit)) {
-            _ = self.parseHexDigit() catch unreachable;
-            if (self.except(Parser.parseHexDigit)) {
-                _ = self.parseHexDigit() catch unreachable;
-            }
-        }
-    }
+    return .{ .charunescaped = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
 
-    return .{
-        .charunicode = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
+fn parseVOID(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"void"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .void = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseLEAF(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"leaf"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .leaf = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseAND(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"&"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .@"and" = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseNOT(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"!"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .not = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseQUESTION(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"?"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .question = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseSTAR(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"*"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .star = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parsePLUS(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"+"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .plus = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseDOT(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"."} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .dot = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseALNUM(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<alnum>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .alnum = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseALPHA(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<alpha>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .alpha = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseASCII(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<ascii>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .ascii = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseCONTROL(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<control>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .control = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseDDIGIT(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<ddigit>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .ddigit = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseDIGIT(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<digit>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .digit = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseGRAPH(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<graph>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .graph = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseLOWER(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<lower>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .lower = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parsePRINTABLE(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<print>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .print = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parsePUNCT(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<punct>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .punct = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseSPACE(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<space>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .space = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseUPPER(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<upper>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .upper = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseWORDCHAR(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<wordchar>"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .wordchar = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseXDIGIT(self: *Parser) !Node {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"xdigit"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+
+    return .{ .xdigit = .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+    } };
+}
+
+fn parseFinal(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"END"} },
+        .{ Parser.parseWHITESPACE, .{} },
+        .{ Parser.parseSEMICOLON, .{} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseHexDigit(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.exceptChar("0123456789abcdefABCDEF");
+}
+
+fn parseTO(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.exceptString("-");
+}
+
+fn parseOPENB(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.exceptString("[");
+}
+
+fn parseCLOSEB(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.exceptString("]");
+}
+
+fn parseAPOSTROPH(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.exceptString("'");
+}
+
+fn parseDAPOSTROPH(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.exceptString("\"");
+}
+
+fn parsePEG(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"PEG"} },
+        .{ Parser.not, .{.{ Parser.choice, .{.{
+            .{ Parser.exceptChar, .{"_:"} },
+            .{ Parser.alnum, .{} },
+        }} }} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseIS(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"<-"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseSEMICOLON(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{";"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseCOLON(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{":"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseSLASH(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"/"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseOPEN(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"("} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseCLOSE(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{")"} },
+        .{ Parser.parseWHITESPACE, .{} },
+    });
+}
+
+fn parseWHITESPACE(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.repeat(.{ Parser.choice, .{.{
+        .{ Parser.exceptString, .{" "} },
+        .{ Parser.exceptString, .{"\t"} },
+        .{ Parser.parseEOL, .{} },
+        .{ Parser.parseCOMMENT, .{} },
+    }} });
+}
+
+fn parseCOMMENT(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.sequence(.{
+        .{ Parser.exceptString, .{"#"} },
+        .{ Parser.repeat, .{.{ Parser.sequence, .{.{
+            .{ Parser.not, .{.{ Parser.parseEOL, .{} }} },
+            .{ Parser.dot, .{} },
+        }} }} },
+        .{ Parser.parseEOL, .{} },
+    });
+}
+
+fn parseEOL(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.choice(.{
+        .{ Parser.exceptString, .{"\n\r"} },
+        .{ Parser.exceptString, .{"\n"} },
+        .{ Parser.exceptString, .{"\r"} },
+    });
+}
+
+fn parseEOF(self: *Parser) !void {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    _ = try self.not(.{ Parser.dot, .{} });
 }
 
 pub fn parse(self: *Parser) !Node {

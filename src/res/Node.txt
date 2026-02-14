@@ -1,0 +1,23 @@
+pub const Node = union(enum) {
+    pub const Leaf = struct {
+        start: Index,
+        end: Index,
+        ref: []const u8,
+
+        pub fn str(self: @This()) []const u8 {
+            return self.ref[self.start..self.end];
+        }
+    };
+
+    pub const Value = struct {
+        start: Index,
+        end: Index,
+        ref: []const u8,
+
+        childs: List(Node),
+
+        pub fn str(self: @This()) []const u8 {
+            return self.ref[self.start..self.end];
+        }
+    };
+

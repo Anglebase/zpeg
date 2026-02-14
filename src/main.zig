@@ -1,7 +1,9 @@
 const std = @import("std");
 const zpeg = @import("zpeg");
 
-fn printNode(node: zpeg.Parser.Node, prefix: usize) void {
+const Writer = std.io.Writer;
+
+fn printNode(node: zpeg.Parser.Node, writer: *Writer, prefix: usize) !void {
     switch (node) {
         .eof,
         .eol,
@@ -21,13 +23,7 @@ fn printNode(node: zpeg.Parser.Node, prefix: usize) void {
         .dapostroph,
         .peg,
         .hexdigit,
-        => {
-            for (0..prefix) |_| {
-                std.debug.print(" ", .{});
-            }
-            std.debug.print("{s}\n", .{@tagName(node)});
-            unreachable;
-        },
+        => unreachable,
         .xdigit,
         .alnum,
         .alpha,
@@ -58,13 +54,12 @@ fn printNode(node: zpeg.Parser.Node, prefix: usize) void {
         .charoctalpart,
         => |leaf| {
             for (0..prefix) |_| {
-                std.debug.print(" ", .{});
+                try writer.print(" ", .{});
             }
-            std.debug.print("{s} ref[{d}..{d}] [[ {s} ]]\n", .{
+            try writer.print("{s} ref[{d}..{d}]\n", .{
                 @tagName(node),
                 leaf.start,
                 leaf.end,
-                leaf.str(),
             });
         },
         .grammar,
@@ -84,16 +79,15 @@ fn printNode(node: zpeg.Parser.Node, prefix: usize) void {
         .char,
         => |value| {
             for (0..prefix) |_| {
-                std.debug.print(" ", .{});
+                try writer.print(" ", .{});
             }
-            std.debug.print("{s} ref[{d}..{d}] [[ {s} ]]:\n", .{
+            try writer.print("{s} ref[{d}..{d}]:\n", .{
                 @tagName(node),
                 value.start,
                 value.end,
-                value.str(),
             });
             for (value.childs.items) |child| {
-                printNode(child, prefix + 2);
+                try printNode(child, writer, prefix + 2);
             }
         },
     }
@@ -104,14 +98,12 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // var file = try std.fs.cwd().openFile("peg.peg", .{});
-    // defer file.close();
+    var file = try std.fs.cwd().createFile("Parser.zig", .{});
+    defer file.close();
 
-    // const src = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
-    // defer allocator.free(src);
     const src = @embedFile("peg.peg");
 
-    var parser = zpeg.Parser.init(allocator, src);
+    var parser = try zpeg.Parser.init(allocator, src);
     defer parser.deinit();
     const root = parser.parse() catch |err| switch (err) {
         error.OutOfMemory => {
@@ -119,10 +111,19 @@ pub fn main() !void {
             return;
         },
         else => {
-            std.debug.print("{s}", .{parser.err_msg.?});
             return err;
         },
     };
 
-    printNode(root, 0);
+
+    var analyzer = zpeg.Analyzer.init(allocator, root);
+    defer analyzer.deinit();
+
+    var buffer: [16]u8 = undefined;
+    var writer = file.writer(&buffer);
+
+    try analyzer.generator(&writer.interface);
+
+    try writer.interface.flush();
+
 }
