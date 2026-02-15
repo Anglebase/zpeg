@@ -71,134 +71,6 @@ fn restore(self: *Parser, pos: Index) void {
     self.pos = pos;
 }
 
-fn alnum(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAlphanumeric(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn alpha(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAlphabetic(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn ascii(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAscii(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn control(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isControl(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn ddigit(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isDigit(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn digit(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isDigit(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn graph(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isPrint(self.ref[self.pos]) and !std.ascii.isWhitespace(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn lower(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isLower(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn print(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isPrint(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn punct(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAscii(self.ref[self.pos]) and
-        !std.ascii.isAlphanumeric(self.ref[self.pos]) and
-        !std.ascii.isWhitespace(self.ref[self.pos]))
-    {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn space(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isWhitespace(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn upper(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isUpper(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn wordchar(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAscii(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-}
-
-fn xdigit(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isHex(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
 fn dot(self: *Parser) !void {
     if (self.pos >= self.ref.len) return error.UnexceptEOF;
     self.advance();
@@ -335,7 +207,7 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
 }
 
 /// e*
-fn repeat(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
+fn repeat(self: *Parser, item: anytype) anyerror!List(Node) {
     const start = self.store();
     errdefer self.restore(start);
     const allocator = self.arena.allocator();
@@ -556,20 +428,6 @@ pub const Node = union(enum) {
     star: Leaf,
     plus: Leaf,
     dot: Leaf,
-    alnum: Leaf,
-    alpha: Leaf,
-    ascii: Leaf,
-    control: Leaf,
-    ddigit: Leaf,
-    digit: Leaf,
-    graph: Leaf,
-    lower: Leaf,
-    printable: Leaf,
-    punct: Leaf,
-    space: Leaf,
-    upper: Leaf,
-    wordchar: Leaf,
-    xdigit: Leaf,
 };
 
 fn parseGrammar(self: *Parser) !Node {
@@ -712,7 +570,7 @@ fn parsePrimary(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.choice, .{.{.{ Parser.parseALNUM, .{} },.{ Parser.parseALPHA, .{} },.{ Parser.parseASCII, .{} },.{ Parser.parseCONTROL, .{} },.{ Parser.parseDDIGIT, .{} },.{ Parser.parseDIGIT, .{} },.{ Parser.parseGRAPH, .{} },.{ Parser.parseLOWER, .{} },.{ Parser.parsePRINTABLE, .{} },.{ Parser.parsePUNCT, .{} },.{ Parser.parseSPACE, .{} },.{ Parser.parseUPPER, .{} },.{ Parser.parseWORDCHAR, .{} },.{ Parser.parseXDIGIT, .{} },.{ Parser.parseIdentifier, .{} },.{ Parser.sequence, .{.{.{ Parser.parseOPEN, .{} },.{ Parser.parseExpression, .{} },.{ Parser.parseCLOSE, .{} },}}},.{ Parser.parseLiteral, .{} },.{ Parser.parseClass, .{} },.{ Parser.parseDOT, .{} },}}},);
+    const childs = try self.require(.{ Parser.choice, .{.{.{ Parser.parseIdentifier, .{} },.{ Parser.sequence, .{.{.{ Parser.parseOPEN, .{} },.{ Parser.parseExpression, .{} },.{ Parser.parseCLOSE, .{} },}}},.{ Parser.parseLiteral, .{} },.{ Parser.parseClass, .{} },.{ Parser.parseDOT, .{} },}}},);
 
     return .{
         .primary = .{
@@ -822,7 +680,7 @@ fn parseIdent(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.choice, .{.{.{ Parser.exceptChar, .{"_:"}},.{ Parser.alpha, .{} },}}},.{ Parser.repeat, .{.{ Parser.choice, .{.{.{ Parser.exceptChar, .{"_:"}},.{ Parser.alnum, .{} },}}},}},}}},);
+    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptChar, .{"_:\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}\u{47}\u{48}\u{49}\u{4a}\u{4b}\u{4c}\u{4d}\u{4e}\u{4f}\u{50}\u{51}\u{52}\u{53}\u{54}\u{55}\u{56}\u{57}\u{58}\u{59}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{67}\u{68}\u{69}\u{6a}\u{6b}\u{6c}\u{6d}\u{6e}\u{6f}\u{70}\u{71}\u{72}\u{73}\u{74}\u{75}\u{76}\u{77}\u{78}\u{79}"}},.{ Parser.repeat, .{.{ Parser.exceptChar, .{"_:\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}\u{47}\u{48}\u{49}\u{4a}\u{4b}\u{4c}\u{4d}\u{4e}\u{4f}\u{50}\u{51}\u{52}\u{53}\u{54}\u{55}\u{56}\u{57}\u{58}\u{59}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{67}\u{68}\u{69}\u{6a}\u{6b}\u{6c}\u{6d}\u{6e}\u{6f}\u{70}\u{71}\u{72}\u{73}\u{74}\u{75}\u{76}\u{77}\u{78}\u{79}\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}\u{38}"}},}},}}},);
 
     return .{
         .ident = .{
@@ -983,7 +841,7 @@ fn parsePEG(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"PEG"}},.{ Parser.not, .{.{ Parser.choice, .{.{.{ Parser.exceptChar, .{"_:"}},.{ Parser.alnum, .{} },}}},}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"PEG"}},.{ Parser.not, .{.{ Parser.exceptChar, .{"_:\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}\u{47}\u{48}\u{49}\u{4a}\u{4b}\u{4c}\u{4d}\u{4e}\u{4f}\u{50}\u{51}\u{52}\u{53}\u{54}\u{55}\u{56}\u{57}\u{58}\u{59}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{67}\u{68}\u{69}\u{6a}\u{6b}\u{6c}\u{6d}\u{6e}\u{6f}\u{70}\u{71}\u{72}\u{73}\u{74}\u{75}\u{76}\u{77}\u{78}\u{79}\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}\u{38}"}},}},.{ Parser.parseWHITESPACE, .{} },}}},);
 
 }
 
@@ -1155,230 +1013,6 @@ fn parseDOT(self: *Parser) !Node {
 
     return .{
         .dot = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseALNUM(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<alnum>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .alnum = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseALPHA(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<alpha>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .alpha = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseASCII(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<ascii>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .ascii = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseCONTROL(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<control>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .control = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseDDIGIT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<ddigit>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .ddigit = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseDIGIT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<digit>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .digit = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseGRAPH(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<graph>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .graph = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseLOWER(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<lower>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .lower = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parsePRINTABLE(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<print>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .printable = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parsePUNCT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<punct>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .punct = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseSPACE(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<space>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .space = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseUPPER(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<upper>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .upper = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseWORDCHAR(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<wordchar>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .wordchar = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-
-}
-
-fn parseXDIGIT(self: *Parser) !Node {
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{"<xdigit>"}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
-    return .{
-        .xdigit = .{
             .start = start,
             .end = self.pos,
             .ref = self.ref,

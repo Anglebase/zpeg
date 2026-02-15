@@ -71,134 +71,6 @@ fn restore(self: *Parser, pos: Index) void {
     self.pos = pos;
 }
 
-fn alnum(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAlphanumeric(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn alpha(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAlphabetic(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn ascii(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAscii(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn control(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isControl(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn ddigit(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isDigit(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn digit(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isDigit(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn graph(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isPrint(self.ref[self.pos]) and !std.ascii.isWhitespace(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn lower(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isLower(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn print(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isPrint(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn punct(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAscii(self.ref[self.pos]) and
-        !std.ascii.isAlphanumeric(self.ref[self.pos]) and
-        !std.ascii.isWhitespace(self.ref[self.pos]))
-    {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn space(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isWhitespace(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn upper(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isUpper(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
-fn wordchar(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isAscii(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-}
-
-fn xdigit(self: *Parser) !void {
-    if (self.pos >= self.ref.len) return error.UnexceptEOF;
-    if (std.ascii.isHex(self.ref[self.pos])) {
-        self.advance();
-        return;
-    }
-    return error.UnexceptChar;
-}
-
 fn dot(self: *Parser) !void {
     if (self.pos >= self.ref.len) return error.UnexceptEOF;
     self.advance();
@@ -335,7 +207,7 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
 }
 
 /// e*
-fn repeat(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
+fn repeat(self: *Parser, item: anytype) anyerror!List(Node) {
     const start = self.store();
     errdefer self.restore(start);
     const allocator = self.arena.allocator();

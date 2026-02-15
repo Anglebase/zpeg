@@ -4,20 +4,6 @@ const Writer = std.io.Writer;
 
 pub fn printNode(node: Parser.Node, writer: *Writer, prefix: usize) !void {
     switch (node) {
-        .xdigit,
-        .alnum,
-        .alpha,
-        .ascii,
-        .control,
-        .ddigit,
-        .digit,
-        .graph,
-        .lower,
-        .printable,
-        .punct,
-        .space,
-        .upper,
-        .wordchar,
         .void,
         .leaf,
         .@"and",

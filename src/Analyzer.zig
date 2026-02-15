@@ -268,20 +268,6 @@ fn genParseCall2(self: *Analyzer, writer: *Writer, node: *const Node) !void {
         .primary => |v| {
             try self.genParseCall2(writer, &v.childs.items[0]);
         },
-        .alnum => try writer.writeAll(".{ Parser.alnum, .{} },"),
-        .alpha => try writer.writeAll(".{ Parser.alpha, .{} },"),
-        .ascii => try writer.writeAll(".{ Parser.ascii, .{} },"),
-        .control => try writer.writeAll(".{ Parser.control, .{} },"),
-        .ddigit => try writer.writeAll(".{ Parser.ddigit, .{} },"),
-        .digit => try writer.writeAll(".{ Parser.digit, .{} },"),
-        .graph => try writer.writeAll(".{ Parser.graph, .{} },"),
-        .lower => try writer.writeAll(".{ Parser.lower, .{} },"),
-        .printable => try writer.writeAll(".{ Parser.print, .{} },"),
-        .punct => try writer.writeAll(".{ Parser.punct, .{} },"),
-        .space => try writer.writeAll(".{ Parser.space, .{} },"),
-        .upper => try writer.writeAll(".{ Parser.upper, .{} },"),
-        .wordchar => try writer.writeAll(".{ Parser.wordchar, .{} },"),
-        .xdigit => try writer.writeAll(".{ Parser.xdigit, .{} },"),
         .dot => try writer.writeAll(".{ Parser.dot, .{} },"),
         .identifier => |v| {
             const name = try self.toStandardFuncName(v.childs.items[0].ident.str());

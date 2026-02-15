@@ -9,10 +9,7 @@ PEG pe_grammar_for_peg (Grammar)
         Sequence        <- Prefix+ ;
         Prefix          <- (AND / NOT)? Suffix ;
         Suffix          <- Primary (QUESTION / STAR / PLUS)? ;
-        Primary         <- ALNUM / ALPHA / ASCII / CONTROL / DDIGIT / DIGIT
-                        /  GRAPH / LOWER / PRINTABLE / PUNCT / SPACE / UPPER
-                        /  WORDCHAR / XDIGIT
-                        / Identifier
+        Primary         <- Identifier
                         /  OPEN Expression CLOSE
                         /  Literal
                         /  Class
@@ -27,7 +24,7 @@ void:   Final           <- "END" WHITESPACE SEMICOLON WHITESPACE ;
         # --------------------------------------------------------------------
         # Lexing constructs
         Identifier      <- Ident WHITESPACE ;
-leaf:   Ident           <- ([_:] / <alpha>) ([_:] / <alnum>)* ;
+leaf:   Ident           <- [_:A-Za-z] [_:A-Za-z0-9]* ;
         Char            <- CharSpecial / CharOctalFull / CharOctalPart
                         /  CharUnicode / CharUnescaped
                         ;
@@ -42,7 +39,7 @@ void:   OPENB           <- "["           ;
 void:   CLOSEB          <- "]"           ;
 void:   APOSTROPH       <- "'"           ;
 void:   DAPOSTROPH      <- '"'           ;
-void:   PEG             <- "PEG" !([_:] / <alnum>) WHITESPACE ;
+void:   PEG             <- "PEG" ![_:A-Za-z0-9] WHITESPACE ;
 void:   IS              <- "<-"    WHITESPACE ;
 leaf:   VOID            <- "void"  WHITESPACE ; # Implies that definition has no semantic value.
 leaf:   LEAF            <- "leaf"  WHITESPACE ; # Implies that definition has no terminals.
@@ -57,20 +54,6 @@ leaf:   PLUS            <- "+"     WHITESPACE ;
 void:   OPEN            <- "("     WHITESPACE ;
 void:   CLOSE           <- ")"     WHITESPACE ;
 leaf:   DOT             <- "."     WHITESPACE ;
-leaf:   ALNUM           <- "<alnum>"    WHITESPACE ;
-leaf:   ALPHA           <- "<alpha>"    WHITESPACE ;
-leaf:   ASCII           <- "<ascii>"    WHITESPACE ;
-leaf:   CONTROL         <- "<control>"  WHITESPACE ;
-leaf:   DDIGIT          <- "<ddigit>"   WHITESPACE ;
-leaf:   DIGIT           <- "<digit>"    WHITESPACE ;
-leaf:   GRAPH           <- "<graph>"    WHITESPACE ;
-leaf:   LOWER           <- "<lower>"    WHITESPACE ;
-leaf:   PRINTABLE       <- "<print>"    WHITESPACE ;
-leaf:   PUNCT           <- "<punct>"    WHITESPACE ;
-leaf:   SPACE           <- "<space>"    WHITESPACE ;
-leaf:   UPPER           <- "<upper>"    WHITESPACE ;
-leaf:   WORDCHAR        <- "<wordchar>" WHITESPACE ;
-leaf:   XDIGIT          <- "<xdigit>"   WHITESPACE ;
 void:   WHITESPACE      <- (" " / "\t" / EOL / COMMENT)* ;
 void:   COMMENT         <- '#' (!EOL .)* EOL ;
 void:   EOL             <- "\n\r" / "\n" / "\r" ;
