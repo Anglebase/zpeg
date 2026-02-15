@@ -6,12 +6,21 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var file = try std.fs.cwd().createFile("Parser2.zig", .{});
-    defer file.close();
-    var log = try std.fs.cwd().createFile("ast.txt", .{});
-    defer log.close();
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
 
-    const src = @embedFile("peg.peg");
+    if (args.len < 2) {
+        std.debug.print("Except 1 argument.", .{});
+        return;
+    }
+    var input = try std.fs.cwd().openFile(args[1], .{});
+    defer input.close();
+
+    var output = try std.fs.cwd().createFile("Parser.zig", .{});
+    defer output.close();
+
+    const src = try input.readToEndAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(src);
 
     var parser = try zpeg.Parser.init(allocator, src);
     defer parser.deinit();
@@ -29,11 +38,7 @@ pub fn main() !void {
     defer analyzer.deinit();
 
     var buffer: [16]u8 = undefined;
-    var writer = file.writer(&buffer);
+    var writer = output.writer(&buffer);
     try analyzer.generator(&writer.interface);
     try writer.interface.flush();
-
-    var logwriter = log.writer(&buffer);
-    try zpeg.utils.printNode(root.childs.items[0], &logwriter.interface, 0);
-    try logwriter.interface.flush();
 }
