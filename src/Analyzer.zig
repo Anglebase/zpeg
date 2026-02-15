@@ -117,7 +117,17 @@ fn toStandardFuncName(self: *Analyzer, name: []const u8) ![]const u8 {
 
 fn genParseFuncVoid(self: *Analyzer, writer: *Writer, def: *const Node.Value) !void {
     const name = def.childs.items[1].identifier.childs.items[0].ident.str();
-    try writer.print("fn {s}(self: *Parser) !void {{\n", .{try self.toStandardFuncName(name)});
+    const func_name = try self.toStandardFuncName(name);
+    try writer.print("fn {s}(self: *Parser) !void {{\n", .{func_name});
+
+    try writer.print(
+        \\    try self.push(
+        \\        \\{s}
+        \\    );
+        \\    defer self.pop();
+        \\
+        \\
+    , .{func_name});
 
     try writer.writeAll(
         \\    const start = self.store();
@@ -135,7 +145,17 @@ fn genParseFuncVoid(self: *Analyzer, writer: *Writer, def: *const Node.Value) !v
 
 fn genParseFuncLeaf(self: *Analyzer, writer: *Writer, def: *const Node.Value) !void {
     const name = def.childs.items[1].identifier.childs.items[0].ident.str();
-    try writer.print("fn {s}(self: *Parser) !Node {{\n", .{try self.toStandardFuncName(name)});
+    const func_name = try self.toStandardFuncName(name);
+    try writer.print("fn {s}(self: *Parser) !Node {{\n", .{func_name});
+
+    try writer.print(
+        \\    try self.push(
+        \\        \\{s}
+        \\    );
+        \\    defer self.pop();
+        \\
+        \\
+    , .{func_name});
 
     try writer.writeAll(
         \\    const start = self.store();
@@ -165,7 +185,17 @@ fn genParseFuncLeaf(self: *Analyzer, writer: *Writer, def: *const Node.Value) !v
 
 fn genParseFuncValue(self: *Analyzer, writer: *Writer, def: *const Node.Value) !void {
     const name = def.childs.items[0].identifier.childs.items[0].ident.str();
-    try writer.print("fn {s}(self: *Parser) !Node {{\n", .{try self.toStandardFuncName(name)});
+    const func_name = try self.toStandardFuncName(name);
+    try writer.print("fn {s}(self: *Parser) !Node {{\n", .{func_name});
+
+    try writer.print(
+        \\    try self.push(
+        \\        \\{s}
+        \\    );
+        \\    defer self.pop();
+        \\
+        \\
+    , .{func_name});
 
     try writer.writeAll(
         \\    const start = self.store();
@@ -384,7 +414,7 @@ fn toInteger(_: *Analyzer, node: Node) u32 {
 
 fn genRange(self: *Analyzer, writer: *Writer, start: Node, end: Node) !void {
     const s = self.toInteger(start);
-    const e = self.toInteger(end);
+    const e = self.toInteger(end) + 1;
     for (s..e) |ch| {
         try writer.writeAll("\\u{");
         try writer.print("{x}", .{ch});
