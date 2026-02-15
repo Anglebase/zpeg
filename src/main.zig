@@ -5,25 +5,6 @@ const Writer = std.io.Writer;
 
 fn printNode(node: zpeg.Parser.Node, writer: *Writer, prefix: usize) !void {
     switch (node) {
-        .eof,
-        .eol,
-        .comment,
-        .whitespace,
-        .is,
-        .final,
-        .semicolon,
-        .colon,
-        .slash,
-        .open,
-        .close,
-        .to,
-        .openb,
-        .closeb,
-        .apostroph,
-        .dapostroph,
-        .peg,
-        .hexdigit,
-        => unreachable,
         .xdigit,
         .alnum,
         .alpha,
@@ -33,7 +14,7 @@ fn printNode(node: zpeg.Parser.Node, writer: *Writer, prefix: usize) !void {
         .digit,
         .graph,
         .lower,
-        .print,
+        .printable,
         .punct,
         .space,
         .upper,
@@ -98,8 +79,10 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var file = try std.fs.cwd().createFile("Parser.zig", .{});
+    var file = try std.fs.cwd().createFile("Parser2.zig", .{});
     defer file.close();
+    var log = try std.fs.cwd().createFile("ast.txt", .{});
+    defer log.close();
 
     const src = @embedFile("peg.peg");
 
@@ -115,15 +98,16 @@ pub fn main() !void {
         },
     };
 
-
-    var analyzer = zpeg.Analyzer.init(allocator, root);
+    var analyzer = zpeg.Analyzer.init(allocator, &root.childs.items[0]);
     defer analyzer.deinit();
 
     var buffer: [16]u8 = undefined;
     var writer = file.writer(&buffer);
-
     try analyzer.generator(&writer.interface);
-
     try writer.interface.flush();
+
+    var logwriter = log.writer(&buffer);
+    try printNode(root.childs.items[0], &logwriter.interface, 0);
+    try logwriter.interface.flush();
 
 }

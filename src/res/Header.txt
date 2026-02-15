@@ -17,19 +17,19 @@ const Index = usize;
 ref: []const u8,
 pos: Index,
 arena: ArenaAllocator,
-err_stack: List(struct { Index, []const u8 }),
+err_pos: Index,
 
 /// Create a parser.
 ///
 /// Call the method 'deinit' when it is no longer in use.
 /// Caller should ensure that the `source`'s lifetime is longer than this parser.
 pub fn init(allocator: Allocator, source: []const u8) !Parser {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const arena = std.heap.ArenaAllocator.init(allocator);
     return .{
         .arena = arena,
         .pos = 0,
         .ref = source,
-        .err_stack = try .initCapacity(arena.allocator(), 0),
+        .err_pos = 0,
     };
 }
 
@@ -299,24 +299,30 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
         const func_info = @typeInfo(@TypeOf(func)).@"fn";
         blk: switch (@typeInfo(func_info.return_type.?).error_union.payload) {
             void => {
-                @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break :blk,
+                @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break :blk;
                 };
                 return result;
             },
             Node => {
-                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break :blk,
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break :blk;
                 };
                 try result.append(allocator, node);
                 return result;
             },
             List(Node) => {
-                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break :blk,
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break :blk;
                 };
                 defer node_list.deinit(allocator);
                 try result.appendSlice(allocator, node_list.items);
@@ -341,21 +347,27 @@ fn repeat(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
 
     while (true) {
         switch (@typeInfo(func_info.return_type.?).error_union.payload) {
-            void => @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                .OutOfMemory => return err,
-                else => break,
+            void => @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return @errorCast(err);
+                }
+                break;
             },
             Node => {
-                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break,
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
                 };
                 try result.append(allocator, node);
             },
             List(Node) => {
-                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break,
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
                 };
                 defer node_list.deinit(allocator);
                 try result.appendSlice(allocator, node_list.items);
@@ -393,21 +405,27 @@ fn repeatPlus(self: *Parser, item: anytype) anyerror!List(Node) {
 
     while (true) {
         switch (@typeInfo(func_info.return_type.?).error_union.payload) {
-            void => @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                .OutOfMemory => return err,
-                else => break,
+            void => @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return @errorCast(err);
+                }
+                break;
             },
             Node => {
-                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break,
+                const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
                 };
                 try result.append(allocator, node);
             },
             List(Node) => {
-                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                    .OutOfMemory => return err,
-                    else => break,
+                var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                    if (err == error.OutOfMemory) {
+                        return @errorCast(err);
+                    }
+                    break;
                 };
                 defer node_list.deinit(allocator);
                 try result.appendSlice(allocator, node_list.items);
@@ -419,7 +437,7 @@ fn repeatPlus(self: *Parser, item: anytype) anyerror!List(Node) {
 }
 
 /// e?
-fn optional(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
+fn optional(self: *Parser, item: anytype) anyerror!List(Node) {
     const start = self.store();
     errdefer self.restore(start);
     const allocator = self.arena.allocator();
@@ -430,21 +448,27 @@ fn optional(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
     const func_info = @typeInfo(@TypeOf(func)).@"fn";
 
     switch (@typeInfo(func_info.return_type.?).error_union.payload) {
-        void => @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-            .OutOfMemory => return err,
-            else => return result,
+        void => @call(.auto, func, .{self} ++ args) catch |err| {
+            if (err == error.OutOfMemory) {
+                return err;
+            }
+            return result;
         },
         Node => {
-            const node: Node = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                .OutOfMemory => return err,
-                else => return result,
+            const node: Node = @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return err;
+                }
+                return result;
             };
             try result.append(allocator, node);
         },
         List(Node) => {
-            var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| switch (err) {
-                .OutOfMemory => return err,
-                else => return result,
+            var node_list: List(Node) = @call(.auto, func, .{self} ++ args) catch |err| {
+                if (err == error.OutOfMemory) {
+                    return err;
+                }
+                return result;
             };
             defer node_list.deinit(allocator);
             try result.appendSlice(allocator, node_list.items);
@@ -453,3 +477,30 @@ fn optional(self: *Parser, item: anytype) error{OutOfMemory}!List(Node) {
     }
     return result;
 }
+
+fn require(self: *Parser, item: anytype) anyerror!List(Node) {
+    const start = self.store();
+    errdefer self.restore(start);
+    const allocator = self.arena.allocator();
+    var result = try List(Node).initCapacity(allocator, 1);
+
+    const func = item.@"0";
+    const args = item.@"1";
+    const func_info = @typeInfo(@TypeOf(func)).@"fn";
+
+    switch (@typeInfo(func_info.return_type.?).error_union.payload) {
+        void => try @call(.auto, func, .{self} ++ args),
+        Node => {
+            const node: Node = try @call(.auto, func, .{self} ++ args);
+            try result.append(allocator, node);
+        },
+        List(Node) => {
+            var node_list: List(Node) = try @call(.auto, func, .{self} ++ args);
+            defer node_list.deinit(allocator);
+            try result.appendSlice(allocator, node_list.items);
+        },
+        else => unreachable,
+    }
+    return result;
+}
+

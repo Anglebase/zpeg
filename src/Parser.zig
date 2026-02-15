@@ -17,19 +17,17 @@ const Index = usize;
 ref: []const u8,
 pos: Index,
 arena: ArenaAllocator,
-err_stack: List(struct { Index, []const u8 }),
 
 /// Create a parser.
 ///
 /// Call the method 'deinit' when it is no longer in use.
 /// Caller should ensure that the `source`'s lifetime is longer than this parser.
 pub fn init(allocator: Allocator, source: []const u8) !Parser {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    const arena = std.heap.ArenaAllocator.init(allocator);
     return .{
         .arena = arena,
         .pos = 0,
         .ref = source,
-        .err_stack = try .initCapacity(arena.allocator(), 0),
     };
 }
 
@@ -510,7 +508,7 @@ pub const Node = union(enum) {
     digit: Leaf,
     graph: Leaf,
     lower: Leaf,
-    print: Leaf,
+    printable: Leaf,
     punct: Leaf,
     space: Leaf,
     upper: Leaf,
@@ -1247,7 +1245,7 @@ fn parsePRINTABLE(self: *Parser) !Node {
         .{ Parser.parseWHITESPACE, .{} },
     });
 
-    return .{ .print = .{
+    return .{ .printable = .{
         .start = start,
         .end = self.pos,
         .ref = self.ref,
@@ -1506,6 +1504,18 @@ fn parseEOF(self: *Parser) !void {
     _ = try self.not(.{ Parser.dot, .{} });
 }
 
-pub fn parse(self: *Parser) !Node {
-    return try self.parseGrammar();
+pub fn parse(self: *Parser) !Node.Value {
+    const start = self.store();
+    errdefer self.restore(start);
+
+    const childs = try self.choice(.{
+        .{ Parser.parseGrammar, .{} },
+    });
+
+    return .{
+        .start = start,
+        .end = self.pos,
+        .ref = self.ref,
+        .childs = childs,
+    };
 }

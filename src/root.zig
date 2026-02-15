@@ -1,2 +1,2 @@
-pub const Parser = @import("Parser.zig");
+pub const Parser = Analyzer.Parser;
 pub const Analyzer = @import("Analyzer.zig");
