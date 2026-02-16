@@ -63,6 +63,70 @@ fn toStandardName(self: *Analyzer, name: []const u8) ![]const u8 {
 }
 
 fn genNode(self: *Analyzer, writer: *Writer) !void {
+    // start
+    try writer.writeAll(
+        \\    pub fn start(self: Node) Index {
+        \\        switch(self) {
+        \\
+    );
+    for (self.root.grammar.childs.items[1..]) |node| {
+        if (node.definition.childs.items[0] != .identifier) continue;
+        const name = node.definition.childs.items[0].identifier.childs.items[0].ident.str();
+        try writer.print(
+            \\            .{s} => |n| return n.start,
+            \\
+        , .{try self.toStandardName(name)});
+    }
+    try writer.writeAll(
+        \\            inline else => |n| return n.start,
+        \\        }
+        \\    }
+        \\
+        \\
+    );
+    // end
+    try writer.writeAll(
+        \\    pub fn end(self: Node) Index {
+        \\        switch(self) {
+        \\
+    );
+    for (self.root.grammar.childs.items[1..]) |node| {
+        if (node.definition.childs.items[0] != .identifier) continue;
+        const name = node.definition.childs.items[0].identifier.childs.items[0].ident.str();
+        try writer.print(
+            \\            .{s} => |n| return n.end,
+            \\
+        , .{try self.toStandardName(name)});
+    }
+    try writer.writeAll(
+        \\            inline else => |n| return n.end,
+        \\        }
+        \\    }
+        \\
+        \\
+    );
+    // str()
+    try writer.writeAll(
+        \\    pub fn str(self: Node) []const u8 {
+        \\        switch(self) {
+        \\
+    );
+    for (self.root.grammar.childs.items[1..]) |node| {
+        if (node.definition.childs.items[0] != .identifier) continue;
+        const name = node.definition.childs.items[0].identifier.childs.items[0].ident.str();
+        try writer.print(
+            \\            .{s} => |n| return n.str(),
+            \\
+        , .{try self.toStandardName(name)});
+    }
+    try writer.writeAll(
+        \\            inline else => |n| return n.str(),
+        \\        }
+        \\    }
+        \\
+        \\
+    );
+    // fields
     for (self.root.grammar.childs.items[1..]) |node| {
         const def = node.definition;
         switch (def.childs.items[0]) {

@@ -556,6 +556,69 @@ pub const Node = union(enum) {
         }
     };
 
+    pub fn start(self: Node) Index {
+        switch (self) {
+            .grammar => |n| return n.start,
+            .header => |n| return n.start,
+            .definition => |n| return n.start,
+            .attribute => |n| return n.start,
+            .expression => |n| return n.start,
+            .sequence => |n| return n.start,
+            .prefix => |n| return n.start,
+            .suffix => |n| return n.start,
+            .primary => |n| return n.start,
+            .literal => |n| return n.start,
+            .class => |n| return n.start,
+            .range => |n| return n.start,
+            .startexpr => |n| return n.start,
+            .identifier => |n| return n.start,
+            .char => |n| return n.start,
+            inline else => |n| return n.start,
+        }
+    }
+
+    pub fn end(self: Node) Index {
+        switch (self) {
+            .grammar => |n| return n.end,
+            .header => |n| return n.end,
+            .definition => |n| return n.end,
+            .attribute => |n| return n.end,
+            .expression => |n| return n.end,
+            .sequence => |n| return n.end,
+            .prefix => |n| return n.end,
+            .suffix => |n| return n.end,
+            .primary => |n| return n.end,
+            .literal => |n| return n.end,
+            .class => |n| return n.end,
+            .range => |n| return n.end,
+            .startexpr => |n| return n.end,
+            .identifier => |n| return n.end,
+            .char => |n| return n.end,
+            inline else => |n| return n.end,
+        }
+    }
+
+    pub fn str(self: Node) []const u8 {
+        switch (self) {
+            .grammar => |n| return n.str(),
+            .header => |n| return n.str(),
+            .definition => |n| return n.str(),
+            .attribute => |n| return n.str(),
+            .expression => |n| return n.str(),
+            .sequence => |n| return n.str(),
+            .prefix => |n| return n.str(),
+            .suffix => |n| return n.str(),
+            .primary => |n| return n.str(),
+            .literal => |n| return n.str(),
+            .class => |n| return n.str(),
+            .range => |n| return n.str(),
+            .startexpr => |n| return n.str(),
+            .identifier => |n| return n.str(),
+            .char => |n| return n.str(),
+            inline else => |n| return n.str(),
+        }
+    }
+
     grammar: Value,
     header: Value,
     definition: Value,
