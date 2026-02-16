@@ -2,10 +2,11 @@ const std = @import("std");
 const zpeg = @import("zpeg");
 
 pub fn main() !void {
+    // Global
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-
+    // args
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
@@ -13,15 +14,14 @@ pub fn main() !void {
         std.debug.print("Except 1 argument.", .{});
         return;
     }
+    // input
     var input = try std.fs.cwd().openFile(args[1], .{});
     defer input.close();
-
-    var output = try std.fs.cwd().createFile("Parser.zig", .{});
-    defer output.close();
 
     const src = try input.readToEndAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(src);
 
+    // parse
     var parser = try zpeg.Parser.init(allocator, src);
     defer parser.deinit();
     const root = parser.parse() catch |err| switch (err) {
@@ -39,9 +39,13 @@ pub fn main() !void {
             return;
         },
     };
-
+    // analyzer
     var analyzer = zpeg.Analyzer.init(allocator, &root.childs.items[0]);
     defer analyzer.deinit();
+
+    // output
+    var output = try std.fs.cwd().createFile("Parser.zig", .{});
+    defer output.close();
 
     var buffer: [16]u8 = undefined;
     var writer = output.writer(&buffer);
