@@ -39,6 +39,26 @@ pub fn main() !void {
             return;
         },
     };
+
+    // checker
+    var checker = try zpeg.Checker.init(allocator, &root.childs.items[0]);
+    defer checker.deinit();
+
+    checker.checkRoot() catch |err| switch (err) {
+        error.OutOfMemory => {
+            std.debug.print("Out of memmory.", .{});
+            return;
+        },
+        else => {
+            for (checker.err_stack.items) |errinfo| {
+                std.debug.print(
+                    "start: {d}, end: {d}:\n  error: {s}\n",
+                    .{ errinfo.ref.start(), errinfo.ref.end(), errinfo.msg },
+                );
+            }
+        },
+    };
+
     // analyzer
     var analyzer = zpeg.Analyzer.init(allocator, &root.childs.items[0]);
     defer analyzer.deinit();
