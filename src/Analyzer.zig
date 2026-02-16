@@ -127,7 +127,7 @@ fn genParseFuncVoid(self: *Analyzer, writer: *Writer, def: *const Node.Value) !v
         \\    defer self.pop();
         \\
         \\
-    , .{func_name});
+    , .{name});
 
     try writer.writeAll(
         \\    const start = self.store();
@@ -155,7 +155,7 @@ fn genParseFuncLeaf(self: *Analyzer, writer: *Writer, def: *const Node.Value) !v
         \\    defer self.pop();
         \\
         \\
-    , .{func_name});
+    , .{name});
 
     try writer.writeAll(
         \\    const start = self.store();
@@ -195,7 +195,7 @@ fn genParseFuncValue(self: *Analyzer, writer: *Writer, def: *const Node.Value) !
         \\    defer self.pop();
         \\
         \\
-    , .{func_name});
+    , .{name});
 
     try writer.writeAll(
         \\    const start = self.store();

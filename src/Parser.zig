@@ -589,7 +589,7 @@ pub const Node = union(enum) {
 
 fn parseGrammar(self: *Parser) !Node {
     try self.push(
-        \\parseGrammar
+        \\Grammar
     );
     defer self.pop();
 
@@ -620,7 +620,7 @@ fn parseGrammar(self: *Parser) !Node {
 
 fn parseHeader(self: *Parser) !Node {
     try self.push(
-        \\parseHeader
+        \\Header
     );
     defer self.pop();
 
@@ -647,7 +647,7 @@ fn parseHeader(self: *Parser) !Node {
 
 fn parseDefinition(self: *Parser) !Node {
     try self.push(
-        \\parseDefinition
+        \\Definition
     );
     defer self.pop();
 
@@ -678,7 +678,7 @@ fn parseDefinition(self: *Parser) !Node {
 
 fn parseAttribute(self: *Parser) !Node {
     try self.push(
-        \\parseAttribute
+        \\Attribute
     );
     defer self.pop();
 
@@ -707,7 +707,7 @@ fn parseAttribute(self: *Parser) !Node {
 
 fn parseExpression(self: *Parser) !Node {
     try self.push(
-        \\parseExpression
+        \\Expression
     );
     defer self.pop();
 
@@ -738,7 +738,7 @@ fn parseExpression(self: *Parser) !Node {
 
 fn parseSequence(self: *Parser) !Node {
     try self.push(
-        \\parseSequence
+        \\Sequence
     );
     defer self.pop();
 
@@ -763,7 +763,7 @@ fn parseSequence(self: *Parser) !Node {
 
 fn parsePrefix(self: *Parser) !Node {
     try self.push(
-        \\parsePrefix
+        \\Prefix
     );
     defer self.pop();
 
@@ -794,7 +794,7 @@ fn parsePrefix(self: *Parser) !Node {
 
 fn parseSuffix(self: *Parser) !Node {
     try self.push(
-        \\parseSuffix
+        \\Suffix
     );
     defer self.pop();
 
@@ -826,7 +826,7 @@ fn parseSuffix(self: *Parser) !Node {
 
 fn parsePrimary(self: *Parser) !Node {
     try self.push(
-        \\parsePrimary
+        \\Primary
     );
     defer self.pop();
 
@@ -859,7 +859,7 @@ fn parsePrimary(self: *Parser) !Node {
 
 fn parseLiteral(self: *Parser) !Node {
     try self.push(
-        \\parseLiteral
+        \\Literal
     );
     defer self.pop();
 
@@ -909,7 +909,7 @@ fn parseLiteral(self: *Parser) !Node {
 
 fn parseClass(self: *Parser) !Node {
     try self.push(
-        \\parseClass
+        \\Class
     );
     defer self.pop();
 
@@ -944,7 +944,7 @@ fn parseClass(self: *Parser) !Node {
 
 fn parseRange(self: *Parser) !Node {
     try self.push(
-        \\parseRange
+        \\Range
     );
     defer self.pop();
 
@@ -974,7 +974,7 @@ fn parseRange(self: *Parser) !Node {
 
 fn parseStartExpr(self: *Parser) !Node {
     try self.push(
-        \\parseStartExpr
+        \\StartExpr
     );
     defer self.pop();
 
@@ -1001,7 +1001,7 @@ fn parseStartExpr(self: *Parser) !Node {
 
 fn parseFinal(self: *Parser) !void {
     try self.push(
-        \\parseFinal
+        \\Final
     );
     defer self.pop();
 
@@ -1020,7 +1020,7 @@ fn parseFinal(self: *Parser) !void {
 
 fn parseIdentifier(self: *Parser) !Node {
     try self.push(
-        \\parseIdentifier
+        \\Identifier
     );
     defer self.pop();
 
@@ -1046,7 +1046,7 @@ fn parseIdentifier(self: *Parser) !Node {
 
 fn parseIdent(self: *Parser) !Node {
     try self.push(
-        \\parseIdent
+        \\Ident
     );
     defer self.pop();
 
@@ -1073,7 +1073,7 @@ fn parseIdent(self: *Parser) !Node {
 
 fn parseChar(self: *Parser) !Node {
     try self.push(
-        \\parseChar
+        \\Char
     );
     defer self.pop();
 
@@ -1102,7 +1102,7 @@ fn parseChar(self: *Parser) !Node {
 
 fn parseCharSpecial(self: *Parser) !Node {
     try self.push(
-        \\parseCharSpecial
+        \\CharSpecial
     );
     defer self.pop();
 
@@ -1127,7 +1127,7 @@ fn parseCharSpecial(self: *Parser) !Node {
 
 fn parseCharOctalFull(self: *Parser) !Node {
     try self.push(
-        \\parseCharOctalFull
+        \\CharOctalFull
     );
     defer self.pop();
 
@@ -1154,7 +1154,7 @@ fn parseCharOctalFull(self: *Parser) !Node {
 
 fn parseCharOctalPart(self: *Parser) !Node {
     try self.push(
-        \\parseCharOctalPart
+        \\CharOctalPart
     );
     defer self.pop();
 
@@ -1182,7 +1182,7 @@ fn parseCharOctalPart(self: *Parser) !Node {
 
 fn parseCharUnicode(self: *Parser) !Node {
     try self.push(
-        \\parseCharUnicode
+        \\CharUnicode
     );
     defer self.pop();
 
@@ -1221,7 +1221,7 @@ fn parseCharUnicode(self: *Parser) !Node {
 
 fn parseCharUnescaped(self: *Parser) !Node {
     try self.push(
-        \\parseCharUnescaped
+        \\CharUnescaped
     );
     defer self.pop();
 
@@ -1248,7 +1248,7 @@ fn parseCharUnescaped(self: *Parser) !Node {
 
 fn parseHexDigit(self: *Parser) !void {
     try self.push(
-        \\parseHexDigit
+        \\HexDigit
     );
     defer self.pop();
 
@@ -1262,7 +1262,7 @@ fn parseHexDigit(self: *Parser) !void {
 
 fn parseTO(self: *Parser) !void {
     try self.push(
-        \\parseTO
+        \\TO
     );
     defer self.pop();
 
@@ -1276,7 +1276,7 @@ fn parseTO(self: *Parser) !void {
 
 fn parseOPENB(self: *Parser) !void {
     try self.push(
-        \\parseOPENB
+        \\OPENB
     );
     defer self.pop();
 
@@ -1290,7 +1290,7 @@ fn parseOPENB(self: *Parser) !void {
 
 fn parseCLOSEB(self: *Parser) !void {
     try self.push(
-        \\parseCLOSEB
+        \\CLOSEB
     );
     defer self.pop();
 
@@ -1304,7 +1304,7 @@ fn parseCLOSEB(self: *Parser) !void {
 
 fn parseAPOSTROPH(self: *Parser) !void {
     try self.push(
-        \\parseAPOSTROPH
+        \\APOSTROPH
     );
     defer self.pop();
 
@@ -1318,7 +1318,7 @@ fn parseAPOSTROPH(self: *Parser) !void {
 
 fn parseDAPOSTROPH(self: *Parser) !void {
     try self.push(
-        \\parseDAPOSTROPH
+        \\DAPOSTROPH
     );
     defer self.pop();
 
@@ -1332,7 +1332,7 @@ fn parseDAPOSTROPH(self: *Parser) !void {
 
 fn parsePEG(self: *Parser) !void {
     try self.push(
-        \\parsePEG
+        \\PEG
     );
     defer self.pop();
 
@@ -1352,7 +1352,7 @@ fn parsePEG(self: *Parser) !void {
 
 fn parseIS(self: *Parser) !void {
     try self.push(
-        \\parseIS
+        \\IS
     );
     defer self.pop();
 
@@ -1369,7 +1369,7 @@ fn parseIS(self: *Parser) !void {
 
 fn parseVOID(self: *Parser) !Node {
     try self.push(
-        \\parseVOID
+        \\VOID
     );
     defer self.pop();
 
@@ -1394,7 +1394,7 @@ fn parseVOID(self: *Parser) !Node {
 
 fn parseLEAF(self: *Parser) !Node {
     try self.push(
-        \\parseLEAF
+        \\LEAF
     );
     defer self.pop();
 
@@ -1419,7 +1419,7 @@ fn parseLEAF(self: *Parser) !Node {
 
 fn parseSEMICOLON(self: *Parser) !void {
     try self.push(
-        \\parseSEMICOLON
+        \\SEMICOLON
     );
     defer self.pop();
 
@@ -1436,7 +1436,7 @@ fn parseSEMICOLON(self: *Parser) !void {
 
 fn parseCOLON(self: *Parser) !void {
     try self.push(
-        \\parseCOLON
+        \\COLON
     );
     defer self.pop();
 
@@ -1453,7 +1453,7 @@ fn parseCOLON(self: *Parser) !void {
 
 fn parseSLASH(self: *Parser) !void {
     try self.push(
-        \\parseSLASH
+        \\SLASH
     );
     defer self.pop();
 
@@ -1470,7 +1470,7 @@ fn parseSLASH(self: *Parser) !void {
 
 fn parseAND(self: *Parser) !Node {
     try self.push(
-        \\parseAND
+        \\AND
     );
     defer self.pop();
 
@@ -1495,7 +1495,7 @@ fn parseAND(self: *Parser) !Node {
 
 fn parseNOT(self: *Parser) !Node {
     try self.push(
-        \\parseNOT
+        \\NOT
     );
     defer self.pop();
 
@@ -1520,7 +1520,7 @@ fn parseNOT(self: *Parser) !Node {
 
 fn parseQUESTION(self: *Parser) !Node {
     try self.push(
-        \\parseQUESTION
+        \\QUESTION
     );
     defer self.pop();
 
@@ -1545,7 +1545,7 @@ fn parseQUESTION(self: *Parser) !Node {
 
 fn parseSTAR(self: *Parser) !Node {
     try self.push(
-        \\parseSTAR
+        \\STAR
     );
     defer self.pop();
 
@@ -1570,7 +1570,7 @@ fn parseSTAR(self: *Parser) !Node {
 
 fn parsePLUS(self: *Parser) !Node {
     try self.push(
-        \\parsePLUS
+        \\PLUS
     );
     defer self.pop();
 
@@ -1595,7 +1595,7 @@ fn parsePLUS(self: *Parser) !Node {
 
 fn parseOPEN(self: *Parser) !void {
     try self.push(
-        \\parseOPEN
+        \\OPEN
     );
     defer self.pop();
 
@@ -1612,7 +1612,7 @@ fn parseOPEN(self: *Parser) !void {
 
 fn parseCLOSE(self: *Parser) !void {
     try self.push(
-        \\parseCLOSE
+        \\CLOSE
     );
     defer self.pop();
 
@@ -1629,7 +1629,7 @@ fn parseCLOSE(self: *Parser) !void {
 
 fn parseDOT(self: *Parser) !Node {
     try self.push(
-        \\parseDOT
+        \\DOT
     );
     defer self.pop();
 
@@ -1654,7 +1654,7 @@ fn parseDOT(self: *Parser) !Node {
 
 fn parseWHITESPACE(self: *Parser) !void {
     try self.push(
-        \\parseWHITESPACE
+        \\WHITESPACE
     );
     defer self.pop();
 
@@ -1675,7 +1675,7 @@ fn parseWHITESPACE(self: *Parser) !void {
 
 fn parseCOMMENT(self: *Parser) !void {
     try self.push(
-        \\parseCOMMENT
+        \\COMMENT
     );
     defer self.pop();
 
@@ -1700,7 +1700,7 @@ fn parseCOMMENT(self: *Parser) !void {
 
 fn parseEOL(self: *Parser) !void {
     try self.push(
-        \\parseEOL
+        \\EOL
     );
     defer self.pop();
 
@@ -1718,7 +1718,7 @@ fn parseEOL(self: *Parser) !void {
 
 fn parseEOF(self: *Parser) !void {
     try self.push(
-        \\parseEOF
+        \\EOF
     );
     defer self.pop();
 
