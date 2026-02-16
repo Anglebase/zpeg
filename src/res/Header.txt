@@ -53,6 +53,17 @@ fn pop(self: *Parser) void {
     _ = self.stack.pop();
 }
 
+fn storeError(self: *Parser) usize {
+    return self.err_stack.items.len;
+}
+
+fn restoreError(self: *Parser, before: usize) void {
+    if (before >= self.err_stack.items.len) return;
+    for (before..self.err_stack.items.len) |_| {
+        _ = self.err_stack.pop();
+    }
+}
+
 /// See `init`.
 pub fn deinit(self: *Parser) void {
     const gpa = self.arena.allocator();
@@ -107,6 +118,9 @@ fn dot(self: *Parser) !void {
 
 /// ""
 fn exceptString(self: *Parser, string: []const u8) !void {
+    try self.push("exceptString");
+    defer self.pop();
+
     const start = self.store();
     errdefer self.restore(start);
 
@@ -177,6 +191,9 @@ fn listCharClass(self: *Parser, charclass: []const u8) ![]const u8 {
 
 /// []
 fn exceptChar(self: *Parser, charclass: []const u8) !void {
+    try self.push("exceptChar");
+    defer self.pop();
+
     const start = self.store();
     errdefer self.restore(start);
 
@@ -283,7 +300,13 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
     errdefer self.restore(start);
     const allocator = self.arena.allocator();
     var result = try List(Node).initCapacity(allocator, list.len);
+    const before = self.storeError();
 
+    // choice error start
+    try self.pushError(.{
+        .pos = self.pos,
+        .msg = "NoMatchesStart",
+    });
     inline for (list) |item| {
         const func = item.@"0";
         const args = item.@"1";
@@ -296,6 +319,7 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
                     }
                     break :blk;
                 };
+                self.restoreError(before);
                 return result;
             },
             Node => {
@@ -306,6 +330,7 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
                     break :blk;
                 };
                 try result.append(allocator, node);
+                self.restoreError(before);
                 return result;
             },
             List(Node) => {
@@ -317,6 +342,7 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
                 };
                 defer node_list.deinit(allocator);
                 try result.appendSlice(allocator, node_list.items);
+                self.restoreError(before);
                 return result;
             },
             else => unreachable,
@@ -324,7 +350,7 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
     }
     try self.pushError(.{
         .pos = self.pos,
-        .msg = "All expected symbols do not match.",
+        .msg = "NoMatchesEnd",
     });
     return error.NoMatches;
 }
@@ -342,6 +368,7 @@ fn repeat(self: *Parser, item: anytype) anyerror!List(Node) {
     const func_info = @typeInfo(@TypeOf(func)).@"fn";
 
     while (true) {
+        const before = self.storeError();
         switch (@typeInfo(func_info.return_type.?).error_union.payload) {
             void => @call(.auto, func, .{self} ++ args) catch |err| {
                 if (err == error.OutOfMemory) {
@@ -370,8 +397,8 @@ fn repeat(self: *Parser, item: anytype) anyerror!List(Node) {
             },
             else => unreachable,
         }
+        self.restoreError(before);
     }
-    self.err_stack.clearRetainingCapacity();
     return result;
 }
 
@@ -402,6 +429,7 @@ fn repeatPlus(self: *Parser, item: anytype) anyerror!List(Node) {
     }
 
     while (true) {
+        const before = self.storeError();
         switch (@typeInfo(func_info.return_type.?).error_union.payload) {
             void => @call(.auto, func, .{self} ++ args) catch |err| {
                 if (err == error.OutOfMemory) {
@@ -430,8 +458,8 @@ fn repeatPlus(self: *Parser, item: anytype) anyerror!List(Node) {
             },
             else => unreachable,
         }
+        self.restoreError(before);
     }
-    self.err_stack.clearRetainingCapacity();
     return result;
 }
 
@@ -475,7 +503,6 @@ fn optional(self: *Parser, item: anytype) anyerror!List(Node) {
         },
         else => unreachable,
     }
-    self.err_stack.clearRetainingCapacity();
     return result;
 }
 
