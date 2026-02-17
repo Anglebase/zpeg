@@ -30,6 +30,7 @@ pub fn main() !void {
             return;
         },
         else => {
+            parser.filterError();
             for (parser.err_stack.items) |errinfo| {
                 std.debug.print("pos: {d}, error: {s}\n", .{ errinfo.pos, errinfo.msg });
                 for (errinfo.stack, 1..) |f, i| {

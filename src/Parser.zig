@@ -45,6 +45,24 @@ fn pushError(self: *Parser, err: Error) !void {
     try self.err_stack.append(allocator, e);
 }
 
+fn errorPosLessThan(_: *Parser, left: Error, right: Error) bool {
+    return left.pos > right.pos;
+}
+
+pub fn filterError(self: *Parser) void {
+    if (self.err_stack.items.len == 0) return;
+    std.mem.sort(Error, self.err_stack.items, self, errorPosLessThan);
+    const max_pos = self.err_stack.items[0].pos;
+    var end_pos: usize = undefined;
+    for (self.err_stack.items, 0..) |*item, i| {
+        if (item.pos != max_pos) {
+            end_pos = i;
+            break;
+        }
+    }
+    self.err_stack.shrinkRetainingCapacity(end_pos);
+}
+
 fn push(self: *Parser, name: []const u8) !void {
     try self.stack.append(self.arena.allocator(), name);
 }
@@ -302,11 +320,6 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
     var result = try List(Node).initCapacity(allocator, list.len);
     const before = self.storeError();
 
-    // choice error start
-    try self.pushError(.{
-        .pos = self.pos,
-        .msg = "NoMatchesStart",
-    });
     inline for (list) |item| {
         const func = item.@"0";
         const args = item.@"1";
@@ -348,10 +361,6 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
             else => unreachable,
         }
     }
-    try self.pushError(.{
-        .pos = self.pos,
-        .msg = "NoMatchesEnd",
-    });
     return error.NoMatches;
 }
 
