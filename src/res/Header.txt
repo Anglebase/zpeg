@@ -61,6 +61,21 @@ pub fn filterError(self: *Parser) void {
         }
     }
     self.err_stack.shrinkRetainingCapacity(end_pos);
+
+    const old_len = self.err_stack.items.len;
+    var new_len = old_len;
+    outer: for (0..old_len) |i| {
+        for (self.err_stack.items[i].stack) |str| {
+            for (NULLABLE) |nullable| {
+                if (std.mem.eql(u8, str, nullable)) {
+                    new_len -= 1;
+                    continue :outer;
+                }
+            }
+        }
+        self.err_stack.items[i - (self.err_stack.items.len - new_len)] = self.err_stack.items[i];
+    }
+    self.err_stack.shrinkRetainingCapacity(new_len);
 }
 
 fn push(self: *Parser, name: []const u8) !void {
@@ -320,11 +335,6 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
     var result = try List(Node).initCapacity(allocator, list.len);
     const before = self.storeError();
 
-    // choice error start
-    try self.pushError(.{
-        .pos = self.pos,
-        .msg = "NoMatchesStart",
-    });
     inline for (list) |item| {
         const func = item.@"0";
         const args = item.@"1";
@@ -366,10 +376,6 @@ fn choice(self: *Parser, list: anytype) anyerror!List(Node) {
             else => unreachable,
         }
     }
-    try self.pushError(.{
-        .pos = self.pos,
-        .msg = "NoMatchesEnd",
-    });
     return error.NoMatches;
 }
 
