@@ -1,21 +1,39 @@
 const std = @import("std");
+const buildin = @import("builtin");
 const zpeg = @import("zpeg");
+const Writer = std.io.Writer;
+
+fn exit(stderr: *Writer) !void {
+    if (buildin.mode != .Debug) {
+        return error.ErrorTreminal;
+    }
+    try stderr.flush();
+}
 
 pub fn main() !void {
     // Global
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const allocator = if (buildin.mode == .Debug) gpa.allocator() else std.heap.smp_allocator;
+    var buffer: [1024]u8 = undefined;
+    var stderr_writer = std.fs.File.stderr().writer(&buffer);
+    const stderr = &stderr_writer.interface;
     // args
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.debug.print("Except 1 argument.", .{});
-        return;
+        try stderr.print("Except 1 argument.", .{});
+        return exit(stderr);
     }
     // input
-    var input = try std.fs.cwd().openFile(args[1], .{});
+    var input = std.fs.cwd().openFile(args[1], .{}) catch |err| {
+        try stderr.print(
+            "Cannot open file '{s}': {s}",
+            .{ args[1], @errorName(err) },
+        );
+        return exit(stderr);
+    };
     defer input.close();
 
     const src = try input.readToEndAlloc(allocator, std.math.maxInt(usize));
@@ -24,40 +42,50 @@ pub fn main() !void {
     // parse
     var parser = try zpeg.Parser.init(allocator, src);
     defer parser.deinit();
-    const root = parser.parse() catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("Out of memmory.", .{});
-            return;
-        },
-        else => {
-            parser.filterError();
-            for (parser.err_stack.items) |errinfo| {
-                std.debug.print("pos: {d}, error: {s}\n", .{ errinfo.pos, errinfo.msg });
-                for (errinfo.stack, 1..) |f, i| {
-                    std.debug.print("    {d} | {s}\n", .{ i, f });
+    const root = parser.parse() catch |err| {
+        switch (err) {
+            error.OutOfMemory => {
+                try stderr.print("Out of memmory.", .{});
+            },
+            else => {
+                parser.filterError();
+                const pos = parser.err_stack.items[0].pos;
+                try zpeg.utils.printContext(stderr, pos, pos, parser.ref);
+                var has = std.StringHashMap(void).init(allocator);
+                defer has.deinit();
+                try stderr.writeAll("Info:\n");
+                for (parser.err_stack.items) |errinfo| {
+                    const str = zpeg.utils.exceptContent(errinfo.stack);
+                    if(has.contains(str)) {
+                        continue;
+                    }
+                    try has.put(str, {});
+                    try stderr.print("    * Except {s}.\n", .{str});
                 }
-            }
-            return;
-        },
+            },
+        }
+        return exit(stderr);
     };
 
     // checker
     var checker = try zpeg.Checker.init(allocator, &root.childs.items[0]);
     defer checker.deinit();
 
-    checker.checkRoot() catch |err| switch (err) {
-        error.OutOfMemory => {
-            std.debug.print("Out of memmory.", .{});
-            return;
-        },
-        else => {
-            for (checker.err_stack.items) |errinfo| {
-                std.debug.print(
-                    "start: {d}, end: {d}:\n  error: {s}\n",
-                    .{ errinfo.ref.start(), errinfo.ref.end(), errinfo.msg },
-                );
-            }
-        },
+    checker.checkRoot() catch |err| {
+        switch (err) {
+            error.OutOfMemory => {
+                try stderr.print("Out of memmory.", .{});
+            },
+            else => {
+                for (checker.err_stack.items) |errinfo| {
+                    const start = errinfo.ref.start();
+                    const end = errinfo.ref.end();
+                    try zpeg.utils.printContext(stderr, start, end, parser.ref);
+                    try stderr.print("error: {s}\n", .{errinfo.msg});
+                }
+            },
+        }
+        return exit(stderr);
     };
 
     // analyzer
@@ -68,7 +96,6 @@ pub fn main() !void {
     var output = try std.fs.cwd().createFile("Parser.zig", .{});
     defer output.close();
 
-    var buffer: [16]u8 = undefined;
     var writer = output.writer(&buffer);
     try analyzer.generator(&writer.interface);
     try writer.interface.flush();
