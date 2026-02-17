@@ -4,6 +4,7 @@ pub const Parser = @import("Parser.zig");
 const Analyzer = @This();
 const Node = Parser.Node;
 const Writer = std.io.Writer;
+const Checker = @import("Checker.zig");
 
 const HEADER = @embedFile("res/Header.txt");
 const KEYWORDS = @embedFile("res/keywords.txt");
@@ -25,6 +26,8 @@ pub fn deinit(self: *Analyzer) void {
 
 pub fn generator(self: *Analyzer, writer: *Writer) !void {
     try writer.writeAll(HEADER);
+
+    try self.genNullableSet(writer);
 
     try writer.writeAll(NODE);
     try self.genNode(writer);
@@ -185,9 +188,7 @@ fn genParseFuncVoid(self: *Analyzer, writer: *Writer, def: *const Node.Value) !v
     try writer.print("fn {s}(self: *Parser) !void {{\n", .{func_name});
 
     try writer.print(
-        \\    try self.push(
-        \\        \\{s}
-        \\    );
+        \\    try self.push("{s}");
         \\    defer self.pop();
         \\
         \\
@@ -213,9 +214,7 @@ fn genParseFuncLeaf(self: *Analyzer, writer: *Writer, def: *const Node.Value) !v
     try writer.print("fn {s}(self: *Parser) !Node {{\n", .{func_name});
 
     try writer.print(
-        \\    try self.push(
-        \\        \\{s}
-        \\    );
+        \\    try self.push("{s}");
         \\    defer self.pop();
         \\
         \\
@@ -253,9 +252,7 @@ fn genParseFuncValue(self: *Analyzer, writer: *Writer, def: *const Node.Value) !
     try writer.print("fn {s}(self: *Parser) !Node {{\n", .{func_name});
 
     try writer.print(
-        \\    try self.push(
-        \\        \\{s}
-        \\    );
+        \\    try self.push("{s}");
         \\    defer self.pop();
         \\
         \\
@@ -511,5 +508,48 @@ fn genParse(self: *Analyzer, writer: *Writer) !void {
         \\        .childs = childs,
         \\    };
         \\}
+    );
+}
+
+fn genNullableSet(self: *Analyzer, writer: *Writer) !void {
+    try writer.writeAll(
+        \\pub const NULLABLE = [_][]const u8 {
+        \\
+    );
+    var checker = try Checker.init(self.arena.allocator(), self.root);
+    defer checker.deinit();
+    const root = self.root.grammar.childs.items[0]
+        .header.childs.items[0].identifier.childs.items[0].ident.str();
+    const nullable = checker.check(root, undefined) catch |err| switch (err) {
+        error.OutOfMemory => return @as(error{OutOfMemory}, @errorCast(err)),
+        else => unreachable,
+    };
+    if (nullable) {
+        try writer.writeAll("    \"#root\",\n");
+    }
+    for (self.root.grammar.childs.items[1..]) |item| {
+        const def = item.definition;
+        const name = blk: switch (def.childs.items[0]) {
+            .attribute => {
+                const v = def.childs.items[1].identifier;
+                break :blk v.childs.items[0].ident.str();
+            },
+            .identifier => |v| {
+                break :blk v.childs.items[0].ident.str();
+            },
+            else => unreachable,
+        };
+        const nullable2 = checker.check(name, undefined) catch |err| switch (err) {
+            error.OutOfMemory => return @as(error{OutOfMemory}, @errorCast(err)),
+            else => unreachable,
+        };
+        if (nullable2) {
+            try writer.print("    \"{s}\",\n", .{name});
+        }
+    }
+    try writer.writeAll(
+        \\};
+        \\
+        \\
     );
 }
