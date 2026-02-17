@@ -182,11 +182,15 @@ fn checkNode(self: *Checker, node: *const Node) error{
             if (access) |pos| {
                 const allocator = self.arena.allocator();
                 var msg: []const u8 = ident;
-                defer allocator.free(msg);
+                var should_free = false;
+                defer if (should_free) {
+                    allocator.free(msg);
+                };
                 for (self.accessing.items[(pos + 1)..], 0..) |item, i| {
                     const before = msg;
                     defer if (i != 0) allocator.free(before);
                     msg = try std.fmt.allocPrint(allocator, "{s} -> {s}", .{ msg, item });
+                    should_free = true;
                 }
                 try self.pushError(.{
                     .ref = node,
