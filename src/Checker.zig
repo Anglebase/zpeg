@@ -30,10 +30,10 @@ pub fn init(gpa: Allocator, root: *const Node) !Checker {
     const allocator = arena.allocator();
     return .{
         .root = root,
-        .arena = arena,
-        .err_stack = try .initCapacity(allocator, 0),
-        .accessing = try .initCapacity(allocator, 0),
+        .err_stack = try .initCapacity(allocator, 10),
+        .accessing = try .initCapacity(allocator, 10),
         .accessed = .init(gpa),
+        .arena = arena,
     };
 }
 

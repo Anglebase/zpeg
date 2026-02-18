@@ -28,11 +28,11 @@ pub fn init(allocator: Allocator, source: []const u8) !Parser {
     var arena = std.heap.ArenaAllocator.init(allocator);
     const gpa = arena.allocator();
     return .{
-        .arena = arena,
         .pos = 0,
         .ref = source,
         .err_stack = try .initCapacity(gpa, 0),
         .stack = try .initCapacity(gpa, 0),
+        .arena = arena,
     };
 }
 
