@@ -29,6 +29,12 @@ pub fn main() !void {
         try stderr.print("Except 1 argument.", .{});
         return exit(stderr);
     }
+
+    if (std.mem.eql(u8, "version", args[1])) {
+        try stderr.writeAll("0.1.0\n");
+        return exit(stderr);
+    }
+
     // input
     var input = std.fs.cwd().openFile(args[1], .{}) catch |err| {
         try stderr.print(
