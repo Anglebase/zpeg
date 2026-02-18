@@ -4,10 +4,10 @@ const zpeg = @import("zpeg");
 const Writer = std.io.Writer;
 
 fn exit(stderr: *Writer) !void {
+    try stderr.flush();
     if (buildin.mode != .Debug) {
         return error.ErrorTreminal;
     }
-    try stderr.flush();
 }
 
 pub fn main() !void {
