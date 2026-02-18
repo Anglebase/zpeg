@@ -11,6 +11,9 @@ fn exit(stderr: *Writer) !void {
 }
 
 pub fn main() !void {
+    if (buildin.os.tag == .windows) {
+        _ = std.os.windows.kernel32.SetConsoleOutputCP(65001);
+    }
     // Global
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -56,8 +59,7 @@ pub fn main() !void {
                 try stderr.writeAll("Info:\n");
                 for (parser.err_stack.items) |errinfo| {
                     const str = zpeg.utils.exceptContent(errinfo.stack);
-                    try stderr.print("    + {s}\n", .{errinfo.msg});
-                    if(has.contains(str)) {
+                    if (has.contains(str)) {
                         continue;
                     }
                     try has.put(str, {});
