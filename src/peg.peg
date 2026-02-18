@@ -24,7 +24,8 @@ void:   Final           <- "END" WHITESPACE SEMICOLON WHITESPACE ;
         # --------------------------------------------------------------------
         # Lexing constructs
         Identifier      <- Ident WHITESPACE ;
-leaf:   Ident           <- [_:A-Za-z] [_:A-Za-z0-9]* ;
+leaf:   Ident           <- [_:A-Za-z] [_:A-Za-z0-9]*
+                        /  '@' DAPOSTROPH (!DAPOSTROPH .)* DAPOSTROPH ;
         Char            <- CharSpecial / CharUnicode / CharUnescaped ;
 leaf:   CharSpecial     <- "\\" [nrt'"\[\]\\] ;
 leaf:   CharUnicode     <- "\\" 'u' HexDigit (HexDigit (HexDigit (HexDigit HexDigit?)?)?)?
