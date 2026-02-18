@@ -24,10 +24,10 @@ pub fn deinit(self: *Analyzer) void {
     self.arena.deinit();
 }
 
-pub fn generator(self: *Analyzer, writer: *Writer) !void {
+pub fn generator(self: *Analyzer, writer: *Writer, checker: *const Checker) !void {
     try writer.writeAll(HEADER);
 
-    try self.genNullableSet(writer);
+    try self.genNullableSet(writer, checker);
 
     try writer.writeAll(NODE);
     try self.genNode(writer);
@@ -511,41 +511,14 @@ fn genParse(self: *Analyzer, writer: *Writer) !void {
     );
 }
 
-fn genNullableSet(self: *Analyzer, writer: *Writer) !void {
+fn genNullableSet(_: *Analyzer, writer: *Writer, checker: *const Checker) !void {
     try writer.writeAll(
         \\pub const NULLABLE = [_][]const u8 {
         \\
     );
-    var checker = try Checker.init(self.arena.allocator(), self.root);
-    defer checker.deinit();
-    const root = self.root.grammar.childs.items[0]
-        .header.childs.items[0].identifier.childs.items[0].ident.str();
-    const nullable = checker.check(root, undefined) catch |err| switch (err) {
-        error.OutOfMemory => return @as(error{OutOfMemory}, @errorCast(err)),
-        else => unreachable,
-    };
-    if (nullable) {
-        try writer.writeAll("    \"#root\",\n");
-    }
-    for (self.root.grammar.childs.items[1..]) |item| {
-        const def = item.definition;
-        const name = blk: switch (def.childs.items[0]) {
-            .attribute => {
-                const v = def.childs.items[1].identifier;
-                break :blk v.childs.items[0].ident.str();
-            },
-            .identifier => |v| {
-                break :blk v.childs.items[0].ident.str();
-            },
-            else => unreachable,
-        };
-        const nullable2 = checker.check(name, undefined) catch |err| switch (err) {
-            error.OutOfMemory => return @as(error{OutOfMemory}, @errorCast(err)),
-            else => unreachable,
-        };
-        if (nullable2) {
-            try writer.print("    \"{s}\",\n", .{name});
-        }
+    var iter = checker.nullable.keyIterator();
+    while (iter.next()) |item| {
+        try writer.print("    \"{s}\",\n", .{item.*});
     }
     try writer.writeAll(
         \\};

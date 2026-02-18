@@ -25,6 +25,8 @@ err_stack: List(Error),
 accessing: List([]const u8),
 accessed: KeyMap,
 
+nullable: std.StringHashMap(void),
+
 pub fn init(gpa: Allocator, root: *const Node) !Checker {
     var arena = ArenaAllocator.init(gpa);
     const allocator = arena.allocator();
@@ -33,6 +35,7 @@ pub fn init(gpa: Allocator, root: *const Node) !Checker {
         .err_stack = try .initCapacity(allocator, 10),
         .accessing = try .initCapacity(allocator, 10),
         .accessed = .init(gpa),
+        .nullable = .init(gpa),
         .arena = arena,
     };
 }
@@ -42,6 +45,7 @@ pub fn deinit(self: *Checker) void {
     self.err_stack.deinit(allocator);
     self.accessing.deinit(allocator);
     self.accessed.deinit();
+    self.nullable.deinit();
 
     self.arena.deinit();
 }
@@ -207,6 +211,9 @@ fn checkNode(self: *Checker, node: *const Node) error{
             const result = try self.check(ident, node);
             _ = self.accessing.pop();
             try self.accessed.put(ident, result);
+            if (result) {
+                try self.nullable.put(ident, {});
+            }
             return result;
         },
         .class, .literal, .dot => return false,

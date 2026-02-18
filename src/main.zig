@@ -97,6 +97,6 @@ pub fn main() !void {
     defer output.close();
 
     var writer = output.writer(&buffer);
-    try analyzer.generator(&writer.interface);
+    try analyzer.generator(&writer.interface, &checker);
     try writer.interface.flush();
 }
