@@ -56,6 +56,7 @@ pub fn main() !void {
                 try stderr.writeAll("Info:\n");
                 for (parser.err_stack.items) |errinfo| {
                     const str = zpeg.utils.exceptContent(errinfo.stack);
+                    try stderr.print("    + {s}\n", .{errinfo.msg});
                     if(has.contains(str)) {
                         continue;
                     }

@@ -53,7 +53,7 @@ pub fn filterError(self: *Parser) void {
     if (self.err_stack.items.len == 0) return;
     std.mem.sort(Error, self.err_stack.items, self, errorPosLessThan);
     const max_pos = self.err_stack.items[0].pos;
-    var end_pos: usize = undefined;
+    var end_pos: usize = self.err_stack.items.len;
     for (self.err_stack.items, 0..) |*item, i| {
         if (item.pos != max_pos) {
             end_pos = i;
@@ -110,13 +110,30 @@ pub fn reset(self: *Parser) void {
     self.pos = 0;
 }
 
+fn isEOF(self: *Parser) bool {
+    return self.pos >= self.ref.len;
+}
+
 /// Peek current charactor.
-fn peek(self: *Parser) ?u8 {
+fn peek(self: *Parser) !?u21 {
     if (self.isEOF()) {
         @branchHint(.cold);
         return null;
     }
-    return self.ref[self.pos];
+    const byte = self.ref[self.pos];
+    if (byte & 0b1000_0000 == 0) {
+        return std.unicode.utf8Decode(self.ref[self.pos..(self.pos + 1)]) catch return error.NotUTF8;
+    } else if (byte & 0b1110_0000 == 0b1100_0000) {
+        return std.unicode.utf8Decode(self.ref[self.pos..(self.pos + 2)]) catch return error.NotUTF8;
+    } else if (byte & 0b1111_0000 == 0b1110_0000) {
+        return std.unicode.utf8Decode(self.ref[self.pos..(self.pos + 3)]) catch return error.NotUTF8;
+    } else if (byte & 0b1111_1000 == 0b1111_0000) {
+        return std.unicode.utf8Decode(self.ref[self.pos..(self.pos + 4)]) catch return error.NotUTF8;
+    } else {
+        @branchHint(.cold);
+        return error.NotUTF8;
+    }
+    return @intCast(self.ref[self.pos]);
 }
 
 fn substr(self: *Parser, start: Index, len: Index) ?[]const u8 {
@@ -126,8 +143,20 @@ fn substr(self: *Parser, start: Index, len: Index) ?[]const u8 {
 }
 
 /// Change the current position to the next character.
-fn advance(self: *Parser) void {
-    self.pos += 1;
+fn advance(self: *Parser) !void {
+    const byte = self.ref[self.pos];
+    if (byte & 0b1000_0000 == 0) {
+        self.pos += 1;
+    } else if (byte & 0b1110_0000 == 0b1100_0000) {
+        self.pos += 2;
+    } else if (byte & 0b1111_0000 == 0b1110_0000) {
+        self.pos += 3;
+    } else if (byte & 0b1111_1000 == 0b1111_0000) {
+        self.pos += 4;
+    } else {
+        @branchHint(.cold);
+        return error.NotUTF8;
+    }
 }
 
 fn store(self: *Parser) Index {
@@ -146,84 +175,77 @@ fn dot(self: *Parser) !void {
         });
         return error.UnexceptEOF;
     }
-    self.advance();
+    try self.advance();
 }
 
 /// ""
-fn exceptString(self: *Parser, string: []const u8) !void {
+fn exceptString(self: *Parser, str: []const u21) !void {
     try self.push("exceptString");
     defer self.pop();
 
     const start = self.store();
     errdefer self.restore(start);
 
-    if (self.pos + string.len - 1 >= self.ref.len) {
+    const allocator = self.arena.allocator();
+    var string = try List(u8).initCapacity(allocator, str.len);
+    for (str) |char| {
+        var seq: [4]u8 = undefined;
+        const len = std.unicode.utf8Encode(char, &seq) catch return error.NotUTF8;
+        try string.appendSlice(allocator, seq[0..len]);
+    }
+
+    if (self.pos + string.items.len - 1 >= self.ref.len) {
         try self.pushError(.{
             .pos = self.pos,
             .msg = try std.fmt.allocPrint(
-                self.arena.allocator(),
+                allocator,
                 "Expected string '{s}', but found EOF.",
-                .{string},
+                .{string.items},
             ),
         });
         return error.UnexceptEOF;
     }
 
-    if (std.mem.eql(u8, self.ref[self.pos..(self.pos + string.len)], string)) {
-        self.pos += string.len;
+    if (std.mem.eql(u8, self.ref[self.pos..(self.pos + string.items.len)], string.items)) {
+        self.pos += string.items.len;
         return;
     }
     try self.pushError(.{
         .pos = self.pos,
         .msg = try std.fmt.allocPrint(
-            self.arena.allocator(),
+            allocator,
             "Expected string '{s}', but found '{s}'.",
-            .{ string, self.ref[self.pos..(self.pos + string.len)] },
+            .{ string.items, self.ref[self.pos..(self.pos + string.items.len)] },
         ),
     });
     return error.UnexceptChar;
 }
 
-fn listCharClass(self: *Parser, charclass: []const u8) ![]const u8 {
+fn listCharClass(self: *Parser, charclass: []const u21) ![]const u8 {
     const allocator = self.arena.allocator();
-    const chars = try allocator.alloc(u8, charclass.len * 4);
+    var chars = try List(u8).initCapacity(allocator, 4 * charclass.len);
 
-    var pos: usize = 0;
     for (charclass, 0..) |ch, i| {
-        if (i == charclass.len - 1) {
-            chars[pos] = '\'';
-            pos += 1;
-            chars[pos] = ch;
-            pos += 1;
-            chars[pos] = '\'';
-            pos += 1;
-        } else if (i == charclass.len - 2) {
-            chars[pos] = '\'';
-            pos += 1;
-            chars[pos] = ch;
-            pos += 1;
-            chars[pos] = '\'';
-            pos += 1;
-            chars[pos] = 'o';
-            pos += 1;
-            chars[pos] = 'r';
-            pos += 1;
-        } else {
-            chars[pos] = '\'';
-            pos += 1;
-            chars[pos] = ch;
-            pos += 1;
-            chars[pos] = '\'';
-            pos += 1;
-            chars[pos] = ',';
-            pos += 1;
+        const slice = try allocator.alloc(u8, 4);
+        const len = std.unicode.utf8Encode(ch, slice) catch return error.NotUTF8;
+        const seq = slice[0..@intCast(len)];
+
+        try chars.append(allocator, '\'');
+        try chars.appendSlice(allocator, seq);
+        try chars.append(allocator, '\'');
+
+        if (i == charclass.len - 2) {
+            try chars.append(allocator, 'o');
+            try chars.append(allocator, 'r');
+        } else if (i != charclass.len - 1) {
+            try chars.append(allocator, ',');
         }
     }
-    return chars;
+    return chars.toOwnedSlice(allocator);
 }
 
 /// []
-fn exceptChar(self: *Parser, charclass: []const u8) !void {
+fn exceptChar(self: *Parser, charclass: []const u21) !void {
     try self.push("exceptChar");
     defer self.pop();
 
@@ -243,12 +265,12 @@ fn exceptChar(self: *Parser, charclass: []const u8) !void {
     }
 
     if (std.mem.containsAtLeast(
-        u8,
+        u21,
         charclass,
         1,
-        self.ref[self.pos..(self.pos + 1)],
+        &.{(try self.peek()).?},
     )) {
-        self.advance();
+        try self.advance();
         return;
     }
     try self.pushError(.{
@@ -558,8 +580,8 @@ fn require(self: *Parser, item: anytype) anyerror!List(Node) {
 }
 
 pub const NULLABLE = [_][]const u8{
-    "WHITESPACE",
     "EOF",
+    "WHITESPACE",
 };
 
 pub const Node = union(enum) {
@@ -665,8 +687,6 @@ pub const Node = union(enum) {
     ident: Leaf,
     char: Value,
     charspecial: Leaf,
-    charoctalfull: Leaf,
-    charoctalpart: Leaf,
     charunicode: Leaf,
     charunescaped: Leaf,
     void: Leaf,
@@ -1074,7 +1094,11 @@ fn parseFinal(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"END"} },
+            .{ Parser.exceptString, .{&.{
+                69,
+                78,
+                68,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
             .{ Parser.parseSEMICOLON, .{} },
             .{ Parser.parseWHITESPACE, .{} },
@@ -1115,9 +1139,129 @@ fn parseIdent(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptChar, .{"_:\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}\u{47}\u{48}\u{49}\u{4a}\u{4b}\u{4c}\u{4d}\u{4e}\u{4f}\u{50}\u{51}\u{52}\u{53}\u{54}\u{55}\u{56}\u{57}\u{58}\u{59}\u{5a}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{67}\u{68}\u{69}\u{6a}\u{6b}\u{6c}\u{6d}\u{6e}\u{6f}\u{70}\u{71}\u{72}\u{73}\u{74}\u{75}\u{76}\u{77}\u{78}\u{79}\u{7a}"} },
+            .{ Parser.exceptChar, .{&.{
+                95,
+                58,
+                65,
+                66,
+                67,
+                68,
+                69,
+                70,
+                71,
+                72,
+                73,
+                74,
+                75,
+                76,
+                77,
+                78,
+                79,
+                80,
+                81,
+                82,
+                83,
+                84,
+                85,
+                86,
+                87,
+                88,
+                89,
+                90,
+                97,
+                98,
+                99,
+                100,
+                101,
+                102,
+                103,
+                104,
+                105,
+                106,
+                107,
+                108,
+                109,
+                110,
+                111,
+                112,
+                113,
+                114,
+                115,
+                116,
+                117,
+                118,
+                119,
+                120,
+                121,
+                122,
+            }} },
             .{ Parser.repeat, .{
-                .{ Parser.exceptChar, .{"_:\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}\u{47}\u{48}\u{49}\u{4a}\u{4b}\u{4c}\u{4d}\u{4e}\u{4f}\u{50}\u{51}\u{52}\u{53}\u{54}\u{55}\u{56}\u{57}\u{58}\u{59}\u{5a}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{67}\u{68}\u{69}\u{6a}\u{6b}\u{6c}\u{6d}\u{6e}\u{6f}\u{70}\u{71}\u{72}\u{73}\u{74}\u{75}\u{76}\u{77}\u{78}\u{79}\u{7a}\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}\u{38}\u{39}"} },
+                .{ Parser.exceptChar, .{&.{
+                    95,
+                    58,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    70,
+                    71,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    83,
+                    84,
+                    85,
+                    86,
+                    87,
+                    88,
+                    89,
+                    90,
+                    97,
+                    98,
+                    99,
+                    100,
+                    101,
+                    102,
+                    103,
+                    104,
+                    105,
+                    106,
+                    107,
+                    108,
+                    109,
+                    110,
+                    111,
+                    112,
+                    113,
+                    114,
+                    115,
+                    116,
+                    117,
+                    118,
+                    119,
+                    120,
+                    121,
+                    122,
+                    48,
+                    49,
+                    50,
+                    51,
+                    52,
+                    53,
+                    54,
+                    55,
+                    56,
+                    57,
+                }} },
             } },
         }} },
     );
@@ -1141,8 +1285,6 @@ fn parseChar(self: *Parser) !Node {
     const childs = try self.require(
         .{ Parser.choice, .{.{
             .{ Parser.parseCharSpecial, .{} },
-            .{ Parser.parseCharOctalFull, .{} },
-            .{ Parser.parseCharOctalPart, .{} },
             .{ Parser.parseCharUnicode, .{} },
             .{ Parser.parseCharUnescaped, .{} },
         }} },
@@ -1167,64 +1309,24 @@ fn parseCharSpecial(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"\\"} },
-            .{ Parser.exceptChar, .{"nrt'\"[]\\"} },
+            .{ Parser.exceptString, .{&.{
+                92,
+            }} },
+            .{ Parser.exceptChar, .{&.{
+                110,
+                114,
+                116,
+                39,
+                34,
+                91,
+                93,
+                92,
+            }} },
         }} },
     );
 
     return .{
         .charspecial = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-
-fn parseCharOctalFull(self: *Parser) !Node {
-    try self.push("CharOctalFull");
-    defer self.pop();
-
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(
-        .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"\\"} },
-            .{ Parser.exceptChar, .{"\u{30}\u{31}\u{32}"} },
-            .{ Parser.exceptChar, .{"\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}"} },
-            .{ Parser.exceptChar, .{"\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}"} },
-        }} },
-    );
-
-    return .{
-        .charoctalfull = .{
-            .start = start,
-            .end = self.pos,
-            .ref = self.ref,
-        },
-    };
-}
-
-fn parseCharOctalPart(self: *Parser) !Node {
-    try self.push("CharOctalPart");
-    defer self.pop();
-
-    const start = self.store();
-    errdefer self.restore(start);
-
-    _ = try self.require(
-        .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"\\"} },
-            .{ Parser.exceptChar, .{"\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}"} },
-            .{ Parser.optional, .{
-                .{ Parser.exceptChar, .{"\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}"} },
-            } },
-        }} },
-    );
-
-    return .{
-        .charoctalpart = .{
             .start = start,
             .end = self.pos,
             .ref = self.ref,
@@ -1240,23 +1342,51 @@ fn parseCharUnicode(self: *Parser) !Node {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"\\"} },
-            .{ Parser.exceptString, .{"u"} },
-            .{ Parser.parseHexDigit, .{} },
-            .{ Parser.optional, .{
-                .{ Parser.sequence, .{.{
-                    .{ Parser.parseHexDigit, .{} },
-                    .{ Parser.optional, .{
-                        .{ Parser.sequence, .{.{
-                            .{ Parser.parseHexDigit, .{} },
-                            .{ Parser.optional, .{
-                                .{ Parser.parseHexDigit, .{} },
-                            } },
-                        }} },
-                    } },
+        .{ Parser.choice, .{.{
+            .{ Parser.sequence, .{.{
+                .{ Parser.exceptString, .{&.{
+                    92,
                 }} },
-            } },
+                .{ Parser.exceptString, .{&.{
+                    117,
+                }} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.optional, .{
+                    .{ Parser.sequence, .{.{
+                        .{ Parser.parseHexDigit, .{} },
+                        .{ Parser.optional, .{
+                            .{ Parser.sequence, .{.{
+                                .{ Parser.parseHexDigit, .{} },
+                                .{ Parser.optional, .{
+                                    .{ Parser.sequence, .{.{
+                                        .{ Parser.parseHexDigit, .{} },
+                                        .{ Parser.optional, .{
+                                            .{ Parser.parseHexDigit, .{} },
+                                        } },
+                                    }} },
+                                } },
+                            }} },
+                        } },
+                    }} },
+                } },
+            }} },
+            .{ Parser.sequence, .{.{
+                .{ Parser.exceptString, .{&.{
+                    92,
+                }} },
+                .{ Parser.exceptString, .{&.{
+                    117,
+                }} },
+                .{ Parser.exceptChar, .{&.{
+                    48,
+                    49,
+                }} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+            }} },
         }} },
     );
 
@@ -1279,7 +1409,9 @@ fn parseCharUnescaped(self: *Parser) !Node {
     _ = try self.require(
         .{ Parser.sequence, .{.{
             .{ Parser.not, .{
-                .{ Parser.exceptString, .{"\\"} },
+                .{ Parser.exceptString, .{&.{
+                    92,
+                }} },
             } },
             .{ Parser.dot, .{} },
         }} },
@@ -1302,7 +1434,30 @@ fn parseHexDigit(self: *Parser) !void {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.exceptChar, .{"\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}\u{38}\u{39}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}"} },
+        .{ Parser.exceptChar, .{&.{
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            97,
+            98,
+            99,
+            100,
+            101,
+            102,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+        }} },
     );
 }
 
@@ -1314,7 +1469,9 @@ fn parseTO(self: *Parser) !void {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.exceptString, .{"-"} },
+        .{ Parser.exceptString, .{&.{
+            45,
+        }} },
     );
 }
 
@@ -1326,7 +1483,9 @@ fn parseOPENB(self: *Parser) !void {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.exceptString, .{"["} },
+        .{ Parser.exceptString, .{&.{
+            91,
+        }} },
     );
 }
 
@@ -1338,7 +1497,9 @@ fn parseCLOSEB(self: *Parser) !void {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.exceptString, .{"]"} },
+        .{ Parser.exceptString, .{&.{
+            93,
+        }} },
     );
 }
 
@@ -1350,7 +1511,9 @@ fn parseAPOSTROPH(self: *Parser) !void {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.exceptString, .{"'"} },
+        .{ Parser.exceptString, .{&.{
+            39,
+        }} },
     );
 }
 
@@ -1362,7 +1525,9 @@ fn parseDAPOSTROPH(self: *Parser) !void {
     errdefer self.restore(start);
 
     _ = try self.require(
-        .{ Parser.exceptString, .{"\""} },
+        .{ Parser.exceptString, .{&.{
+            34,
+        }} },
     );
 }
 
@@ -1375,9 +1540,78 @@ fn parsePEG(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"PEG"} },
+            .{ Parser.exceptString, .{&.{
+                80,
+                69,
+                71,
+            }} },
             .{ Parser.not, .{
-                .{ Parser.exceptChar, .{"_:\u{41}\u{42}\u{43}\u{44}\u{45}\u{46}\u{47}\u{48}\u{49}\u{4a}\u{4b}\u{4c}\u{4d}\u{4e}\u{4f}\u{50}\u{51}\u{52}\u{53}\u{54}\u{55}\u{56}\u{57}\u{58}\u{59}\u{5a}\u{61}\u{62}\u{63}\u{64}\u{65}\u{66}\u{67}\u{68}\u{69}\u{6a}\u{6b}\u{6c}\u{6d}\u{6e}\u{6f}\u{70}\u{71}\u{72}\u{73}\u{74}\u{75}\u{76}\u{77}\u{78}\u{79}\u{7a}\u{30}\u{31}\u{32}\u{33}\u{34}\u{35}\u{36}\u{37}\u{38}\u{39}"} },
+                .{ Parser.exceptChar, .{&.{
+                    95,
+                    58,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    70,
+                    71,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    83,
+                    84,
+                    85,
+                    86,
+                    87,
+                    88,
+                    89,
+                    90,
+                    97,
+                    98,
+                    99,
+                    100,
+                    101,
+                    102,
+                    103,
+                    104,
+                    105,
+                    106,
+                    107,
+                    108,
+                    109,
+                    110,
+                    111,
+                    112,
+                    113,
+                    114,
+                    115,
+                    116,
+                    117,
+                    118,
+                    119,
+                    120,
+                    121,
+                    122,
+                    48,
+                    49,
+                    50,
+                    51,
+                    52,
+                    53,
+                    54,
+                    55,
+                    56,
+                    57,
+                }} },
             } },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
@@ -1393,7 +1627,10 @@ fn parseIS(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"<-"} },
+            .{ Parser.exceptString, .{&.{
+                60,
+                45,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1408,7 +1645,12 @@ fn parseVOID(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"void"} },
+            .{ Parser.exceptString, .{&.{
+                118,
+                111,
+                105,
+                100,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1431,7 +1673,12 @@ fn parseLEAF(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"leaf"} },
+            .{ Parser.exceptString, .{&.{
+                108,
+                101,
+                97,
+                102,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1454,7 +1701,9 @@ fn parseSEMICOLON(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{";"} },
+            .{ Parser.exceptString, .{&.{
+                59,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1469,7 +1718,9 @@ fn parseCOLON(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{":"} },
+            .{ Parser.exceptString, .{&.{
+                58,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1484,7 +1735,9 @@ fn parseSLASH(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"/"} },
+            .{ Parser.exceptString, .{&.{
+                47,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1499,7 +1752,9 @@ fn parseAND(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"&"} },
+            .{ Parser.exceptString, .{&.{
+                38,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1522,7 +1777,9 @@ fn parseNOT(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"!"} },
+            .{ Parser.exceptString, .{&.{
+                33,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1545,7 +1802,9 @@ fn parseQUESTION(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"?"} },
+            .{ Parser.exceptString, .{&.{
+                63,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1568,7 +1827,9 @@ fn parseSTAR(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"*"} },
+            .{ Parser.exceptString, .{&.{
+                42,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1591,7 +1852,9 @@ fn parsePLUS(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"+"} },
+            .{ Parser.exceptString, .{&.{
+                43,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1614,7 +1877,9 @@ fn parseOPEN(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"("} },
+            .{ Parser.exceptString, .{&.{
+                40,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1629,7 +1894,9 @@ fn parseCLOSE(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{")"} },
+            .{ Parser.exceptString, .{&.{
+                41,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1644,7 +1911,9 @@ fn parseDOT(self: *Parser) !Node {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"."} },
+            .{ Parser.exceptString, .{&.{
+                46,
+            }} },
             .{ Parser.parseWHITESPACE, .{} },
         }} },
     );
@@ -1668,8 +1937,12 @@ fn parseWHITESPACE(self: *Parser) !void {
     _ = try self.require(
         .{ Parser.repeat, .{
             .{ Parser.choice, .{.{
-                .{ Parser.exceptString, .{" "} },
-                .{ Parser.exceptString, .{"\t"} },
+                .{ Parser.exceptString, .{&.{
+                    32,
+                }} },
+                .{ Parser.exceptString, .{&.{
+                    9,
+                }} },
                 .{ Parser.parseEOL, .{} },
                 .{ Parser.parseCOMMENT, .{} },
             }} },
@@ -1686,7 +1959,9 @@ fn parseCOMMENT(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.sequence, .{.{
-            .{ Parser.exceptString, .{"#"} },
+            .{ Parser.exceptString, .{&.{
+                35,
+            }} },
             .{ Parser.repeat, .{
                 .{ Parser.sequence, .{.{
                     .{ Parser.not, .{
@@ -1709,9 +1984,16 @@ fn parseEOL(self: *Parser) !void {
 
     _ = try self.require(
         .{ Parser.choice, .{.{
-            .{ Parser.exceptString, .{"\n\r"} },
-            .{ Parser.exceptString, .{"\n"} },
-            .{ Parser.exceptString, .{"\r"} },
+            .{ Parser.exceptString, .{&.{
+                10,
+                13,
+            }} },
+            .{ Parser.exceptString, .{&.{
+                10,
+            }} },
+            .{ Parser.exceptString, .{&.{
+                13,
+            }} },
         }} },
     );
 }
