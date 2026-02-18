@@ -1,6 +1,4 @@
 PEG pe_grammar_for_peg (Grammar)
-	# --------------------------------------------------------------------
-        # Syntactical constructs
         Grammar         <- WHITESPACE Header Definition* Final EOF ;
         Header          <- PEG Identifier StartExpr ;
         Definition      <- Attribute? Identifier IS Expression SEMICOLON ;
@@ -13,21 +11,18 @@ PEG pe_grammar_for_peg (Grammar)
                         /  OPEN Expression CLOSE
                         /  Literal
                         /  Class
-                        /  DOT
-                        ;
+                        /  DOT ;
         Literal         <- APOSTROPH  (!APOSTROPH  Char)* APOSTROPH  WHITESPACE
                         /  DAPOSTROPH (!DAPOSTROPH Char)* DAPOSTROPH WHITESPACE ;
         Class           <- OPENB (!CLOSEB Range)* CLOSEB WHITESPACE ;
         Range           <- Char TO Char / Char ;
         StartExpr       <- OPEN Expression CLOSE ;
 void:   Final           <- "END" WHITESPACE SEMICOLON WHITESPACE ;
-        # --------------------------------------------------------------------
-        # Lexing constructs
         Identifier      <- Ident WHITESPACE ;
 leaf:   Ident           <- [_:A-Za-z] [_:A-Za-z0-9]*
                         /  '@' DAPOSTROPH (!DAPOSTROPH .)* DAPOSTROPH ;
         Char            <- CharSpecial / CharUnicode / CharUnescaped ;
-leaf:   CharSpecial     <- "\\" [nrt'"\[\]\\] ;
+leaf:   CharSpecial     <- "\\" [nrt'"\[\]\-\\] ;
 leaf:   CharUnicode     <- "\\" 'u' HexDigit (HexDigit (HexDigit (HexDigit HexDigit?)?)?)?
                         /  "\\" 'u' [0-1] HexDigit HexDigit HexDigit HexDigit HexDigit ;
 leaf:   CharUnescaped   <- !"\\" . ;
@@ -56,5 +51,4 @@ void:   WHITESPACE      <- (" " / "\t" / EOL / COMMENT)* ;
 void:   COMMENT         <- '#' (!EOL .)* EOL ;
 void:   EOL             <- "\n\r" / "\n" / "\r" ;
 void:   EOF             <- !. ;
-        # --------------------------------------------------------------------
 END;

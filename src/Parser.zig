@@ -579,7 +579,7 @@ fn require(self: *Parser, item: anytype) anyerror!List(Node) {
     return result;
 }
 
-pub const NULLABLE = [_][]const u8 {
+pub const NULLABLE = [_][]const u8{
     "EOF",
     "WHITESPACE",
 };
@@ -608,7 +608,7 @@ pub const Node = union(enum) {
     };
 
     pub fn start(self: Node) Index {
-        switch(self) {
+        switch (self) {
             .grammar => |n| return n.start,
             .header => |n| return n.start,
             .definition => |n| return n.start,
@@ -629,7 +629,7 @@ pub const Node = union(enum) {
     }
 
     pub fn end(self: Node) Index {
-        switch(self) {
+        switch (self) {
             .grammar => |n| return n.end,
             .header => |n| return n.end,
             .definition => |n| return n.end,
@@ -650,7 +650,7 @@ pub const Node = union(enum) {
     }
 
     pub fn str(self: Node) []const u8 {
-        switch(self) {
+        switch (self) {
             .grammar => |n| return n.str(),
             .header => |n| return n.str(),
             .definition => |n| return n.str(),
@@ -706,7 +706,17 @@ fn parseGrammar(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parseWHITESPACE, .{} },.{ Parser.parseHeader, .{} },.{ Parser.repeat, .{.{ Parser.parseDefinition, .{} },}},.{ Parser.parseFinal, .{} },.{ Parser.parseEOF, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseWHITESPACE, .{} },
+            .{ Parser.parseHeader, .{} },
+            .{ Parser.repeat, .{
+                .{ Parser.parseDefinition, .{} },
+            } },
+            .{ Parser.parseFinal, .{} },
+            .{ Parser.parseEOF, .{} },
+        }} },
+    );
 
     return .{
         .grammar = .{
@@ -716,7 +726,6 @@ fn parseGrammar(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseHeader(self: *Parser) !Node {
@@ -726,7 +735,13 @@ fn parseHeader(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parsePEG, .{} },.{ Parser.parseIdentifier, .{} },.{ Parser.parseStartExpr, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parsePEG, .{} },
+            .{ Parser.parseIdentifier, .{} },
+            .{ Parser.parseStartExpr, .{} },
+        }} },
+    );
 
     return .{
         .header = .{
@@ -736,7 +751,6 @@ fn parseHeader(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseDefinition(self: *Parser) !Node {
@@ -746,7 +760,17 @@ fn parseDefinition(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.optional, .{.{ Parser.parseAttribute, .{} },}},.{ Parser.parseIdentifier, .{} },.{ Parser.parseIS, .{} },.{ Parser.parseExpression, .{} },.{ Parser.parseSEMICOLON, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.optional, .{
+                .{ Parser.parseAttribute, .{} },
+            } },
+            .{ Parser.parseIdentifier, .{} },
+            .{ Parser.parseIS, .{} },
+            .{ Parser.parseExpression, .{} },
+            .{ Parser.parseSEMICOLON, .{} },
+        }} },
+    );
 
     return .{
         .definition = .{
@@ -756,7 +780,6 @@ fn parseDefinition(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseAttribute(self: *Parser) !Node {
@@ -766,7 +789,15 @@ fn parseAttribute(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.choice, .{.{.{ Parser.parseVOID, .{} },.{ Parser.parseLEAF, .{} },}}},.{ Parser.parseCOLON, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.choice, .{.{
+                .{ Parser.parseVOID, .{} },
+                .{ Parser.parseLEAF, .{} },
+            }} },
+            .{ Parser.parseCOLON, .{} },
+        }} },
+    );
 
     return .{
         .attribute = .{
@@ -776,7 +807,6 @@ fn parseAttribute(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseExpression(self: *Parser) !Node {
@@ -786,7 +816,17 @@ fn parseExpression(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parseSequence, .{} },.{ Parser.repeat, .{.{ Parser.sequence, .{.{.{ Parser.parseSLASH, .{} },.{ Parser.parseSequence, .{} },}}},}},}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseSequence, .{} },
+            .{ Parser.repeat, .{
+                .{ Parser.sequence, .{.{
+                    .{ Parser.parseSLASH, .{} },
+                    .{ Parser.parseSequence, .{} },
+                }} },
+            } },
+        }} },
+    );
 
     return .{
         .expression = .{
@@ -796,7 +836,6 @@ fn parseExpression(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseSequence(self: *Parser) !Node {
@@ -806,7 +845,11 @@ fn parseSequence(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.repeatPlus, .{.{ Parser.parsePrefix, .{} },}},);
+    const childs = try self.require(
+        .{ Parser.repeatPlus, .{
+            .{ Parser.parsePrefix, .{} },
+        } },
+    );
 
     return .{
         .sequence = .{
@@ -816,7 +859,6 @@ fn parseSequence(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parsePrefix(self: *Parser) !Node {
@@ -826,7 +868,17 @@ fn parsePrefix(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.optional, .{.{ Parser.choice, .{.{.{ Parser.parseAND, .{} },.{ Parser.parseNOT, .{} },}}},}},.{ Parser.parseSuffix, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.optional, .{
+                .{ Parser.choice, .{.{
+                    .{ Parser.parseAND, .{} },
+                    .{ Parser.parseNOT, .{} },
+                }} },
+            } },
+            .{ Parser.parseSuffix, .{} },
+        }} },
+    );
 
     return .{
         .prefix = .{
@@ -836,7 +888,6 @@ fn parsePrefix(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseSuffix(self: *Parser) !Node {
@@ -846,7 +897,18 @@ fn parseSuffix(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parsePrimary, .{} },.{ Parser.optional, .{.{ Parser.choice, .{.{.{ Parser.parseQUESTION, .{} },.{ Parser.parseSTAR, .{} },.{ Parser.parsePLUS, .{} },}}},}},}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parsePrimary, .{} },
+            .{ Parser.optional, .{
+                .{ Parser.choice, .{.{
+                    .{ Parser.parseQUESTION, .{} },
+                    .{ Parser.parseSTAR, .{} },
+                    .{ Parser.parsePLUS, .{} },
+                }} },
+            } },
+        }} },
+    );
 
     return .{
         .suffix = .{
@@ -856,7 +918,6 @@ fn parseSuffix(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parsePrimary(self: *Parser) !Node {
@@ -866,7 +927,19 @@ fn parsePrimary(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.choice, .{.{.{ Parser.parseIdentifier, .{} },.{ Parser.sequence, .{.{.{ Parser.parseOPEN, .{} },.{ Parser.parseExpression, .{} },.{ Parser.parseCLOSE, .{} },}}},.{ Parser.parseLiteral, .{} },.{ Parser.parseClass, .{} },.{ Parser.parseDOT, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.parseIdentifier, .{} },
+            .{ Parser.sequence, .{.{
+                .{ Parser.parseOPEN, .{} },
+                .{ Parser.parseExpression, .{} },
+                .{ Parser.parseCLOSE, .{} },
+            }} },
+            .{ Parser.parseLiteral, .{} },
+            .{ Parser.parseClass, .{} },
+            .{ Parser.parseDOT, .{} },
+        }} },
+    );
 
     return .{
         .primary = .{
@@ -876,7 +949,6 @@ fn parsePrimary(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseLiteral(self: *Parser) !Node {
@@ -886,7 +958,36 @@ fn parseLiteral(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.choice, .{.{.{ Parser.sequence, .{.{.{ Parser.parseAPOSTROPH, .{} },.{ Parser.repeat, .{.{ Parser.sequence, .{.{.{ Parser.not, .{.{ Parser.parseAPOSTROPH, .{} },}},.{ Parser.parseChar, .{} },}}},}},.{ Parser.parseAPOSTROPH, .{} },.{ Parser.parseWHITESPACE, .{} },}}},.{ Parser.sequence, .{.{.{ Parser.parseDAPOSTROPH, .{} },.{ Parser.repeat, .{.{ Parser.sequence, .{.{.{ Parser.not, .{.{ Parser.parseDAPOSTROPH, .{} },}},.{ Parser.parseChar, .{} },}}},}},.{ Parser.parseDAPOSTROPH, .{} },.{ Parser.parseWHITESPACE, .{} },}}},}}},);
+    const childs = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.sequence, .{.{
+                .{ Parser.parseAPOSTROPH, .{} },
+                .{ Parser.repeat, .{
+                    .{ Parser.sequence, .{.{
+                        .{ Parser.not, .{
+                            .{ Parser.parseAPOSTROPH, .{} },
+                        } },
+                        .{ Parser.parseChar, .{} },
+                    }} },
+                } },
+                .{ Parser.parseAPOSTROPH, .{} },
+                .{ Parser.parseWHITESPACE, .{} },
+            }} },
+            .{ Parser.sequence, .{.{
+                .{ Parser.parseDAPOSTROPH, .{} },
+                .{ Parser.repeat, .{
+                    .{ Parser.sequence, .{.{
+                        .{ Parser.not, .{
+                            .{ Parser.parseDAPOSTROPH, .{} },
+                        } },
+                        .{ Parser.parseChar, .{} },
+                    }} },
+                } },
+                .{ Parser.parseDAPOSTROPH, .{} },
+                .{ Parser.parseWHITESPACE, .{} },
+            }} },
+        }} },
+    );
 
     return .{
         .literal = .{
@@ -896,7 +997,6 @@ fn parseLiteral(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseClass(self: *Parser) !Node {
@@ -906,7 +1006,21 @@ fn parseClass(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parseOPENB, .{} },.{ Parser.repeat, .{.{ Parser.sequence, .{.{.{ Parser.not, .{.{ Parser.parseCLOSEB, .{} },}},.{ Parser.parseRange, .{} },}}},}},.{ Parser.parseCLOSEB, .{} },.{ Parser.parseWHITESPACE, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseOPENB, .{} },
+            .{ Parser.repeat, .{
+                .{ Parser.sequence, .{.{
+                    .{ Parser.not, .{
+                        .{ Parser.parseCLOSEB, .{} },
+                    } },
+                    .{ Parser.parseRange, .{} },
+                }} },
+            } },
+            .{ Parser.parseCLOSEB, .{} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .class = .{
@@ -916,7 +1030,6 @@ fn parseClass(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseRange(self: *Parser) !Node {
@@ -926,7 +1039,16 @@ fn parseRange(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.choice, .{.{.{ Parser.sequence, .{.{.{ Parser.parseChar, .{} },.{ Parser.parseTO, .{} },.{ Parser.parseChar, .{} },}}},.{ Parser.parseChar, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.sequence, .{.{
+                .{ Parser.parseChar, .{} },
+                .{ Parser.parseTO, .{} },
+                .{ Parser.parseChar, .{} },
+            }} },
+            .{ Parser.parseChar, .{} },
+        }} },
+    );
 
     return .{
         .range = .{
@@ -936,7 +1058,6 @@ fn parseRange(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseStartExpr(self: *Parser) !Node {
@@ -946,7 +1067,13 @@ fn parseStartExpr(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parseOPEN, .{} },.{ Parser.parseExpression, .{} },.{ Parser.parseCLOSE, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseOPEN, .{} },
+            .{ Parser.parseExpression, .{} },
+            .{ Parser.parseCLOSE, .{} },
+        }} },
+    );
 
     return .{
         .startexpr = .{
@@ -956,7 +1083,6 @@ fn parseStartExpr(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseFinal(self: *Parser) !void {
@@ -966,8 +1092,18 @@ fn parseFinal(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{69, 78, 68, }}},.{ Parser.parseWHITESPACE, .{} },.{ Parser.parseSEMICOLON, .{} },.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                69,
+                78,
+                68,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+            .{ Parser.parseSEMICOLON, .{} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseIdentifier(self: *Parser) !Node {
@@ -977,7 +1113,12 @@ fn parseIdentifier(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.sequence, .{.{.{ Parser.parseIdent, .{} },.{ Parser.parseWHITESPACE, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.parseIdent, .{} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .identifier = .{
@@ -987,7 +1128,6 @@ fn parseIdentifier(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseIdent(self: *Parser) !Node {
@@ -997,7 +1137,151 @@ fn parseIdent(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.choice, .{.{.{ Parser.sequence, .{.{.{ Parser.exceptChar, .{&.{95, 58, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, }}},.{ Parser.repeat, .{.{ Parser.exceptChar, .{&.{95, 58, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, }}},}},}}},.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{64, }}},.{ Parser.parseDAPOSTROPH, .{} },.{ Parser.repeat, .{.{ Parser.sequence, .{.{.{ Parser.not, .{.{ Parser.parseDAPOSTROPH, .{} },}},.{ Parser.dot, .{} },}}},}},.{ Parser.parseDAPOSTROPH, .{} },}}},}}},);
+    _ = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.sequence, .{.{
+                .{ Parser.exceptChar, .{&.{
+                    95,
+                    58,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    70,
+                    71,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    83,
+                    84,
+                    85,
+                    86,
+                    87,
+                    88,
+                    89,
+                    90,
+                    97,
+                    98,
+                    99,
+                    100,
+                    101,
+                    102,
+                    103,
+                    104,
+                    105,
+                    106,
+                    107,
+                    108,
+                    109,
+                    110,
+                    111,
+                    112,
+                    113,
+                    114,
+                    115,
+                    116,
+                    117,
+                    118,
+                    119,
+                    120,
+                    121,
+                    122,
+                }} },
+                .{ Parser.repeat, .{
+                    .{ Parser.exceptChar, .{&.{
+                        95,
+                        58,
+                        65,
+                        66,
+                        67,
+                        68,
+                        69,
+                        70,
+                        71,
+                        72,
+                        73,
+                        74,
+                        75,
+                        76,
+                        77,
+                        78,
+                        79,
+                        80,
+                        81,
+                        82,
+                        83,
+                        84,
+                        85,
+                        86,
+                        87,
+                        88,
+                        89,
+                        90,
+                        97,
+                        98,
+                        99,
+                        100,
+                        101,
+                        102,
+                        103,
+                        104,
+                        105,
+                        106,
+                        107,
+                        108,
+                        109,
+                        110,
+                        111,
+                        112,
+                        113,
+                        114,
+                        115,
+                        116,
+                        117,
+                        118,
+                        119,
+                        120,
+                        121,
+                        122,
+                        48,
+                        49,
+                        50,
+                        51,
+                        52,
+                        53,
+                        54,
+                        55,
+                        56,
+                        57,
+                    }} },
+                } },
+            }} },
+            .{ Parser.sequence, .{.{
+                .{ Parser.exceptString, .{&.{
+                    64,
+                }} },
+                .{ Parser.parseDAPOSTROPH, .{} },
+                .{ Parser.repeat, .{
+                    .{ Parser.sequence, .{.{
+                        .{ Parser.not, .{
+                            .{ Parser.parseDAPOSTROPH, .{} },
+                        } },
+                        .{ Parser.dot, .{} },
+                    }} },
+                } },
+                .{ Parser.parseDAPOSTROPH, .{} },
+            }} },
+        }} },
+    );
 
     return .{
         .ident = .{
@@ -1006,7 +1290,6 @@ fn parseIdent(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseChar(self: *Parser) !Node {
@@ -1016,7 +1299,13 @@ fn parseChar(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.choice, .{.{.{ Parser.parseCharSpecial, .{} },.{ Parser.parseCharUnicode, .{} },.{ Parser.parseCharUnescaped, .{} },}}},);
+    const childs = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.parseCharSpecial, .{} },
+            .{ Parser.parseCharUnicode, .{} },
+            .{ Parser.parseCharUnescaped, .{} },
+        }} },
+    );
 
     return .{
         .char = .{
@@ -1026,7 +1315,6 @@ fn parseChar(self: *Parser) !Node {
             .childs = childs,
         },
     };
-
 }
 
 fn parseCharSpecial(self: *Parser) !Node {
@@ -1036,7 +1324,24 @@ fn parseCharSpecial(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{92, }}},.{ Parser.exceptChar, .{&.{110, 114, 116, 39, 34, 91, 93, 92, }}},}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                92,
+            }} },
+            .{ Parser.exceptChar, .{&.{
+                110,
+                114,
+                116,
+                39,
+                34,
+                91,
+                93,
+                45,
+                92,
+            }} },
+        }} },
+    );
 
     return .{
         .charspecial = .{
@@ -1045,7 +1350,6 @@ fn parseCharSpecial(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseCharUnicode(self: *Parser) !Node {
@@ -1055,7 +1359,54 @@ fn parseCharUnicode(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.choice, .{.{.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{92, }}},.{ Parser.exceptString, .{&.{117, }}},.{ Parser.parseHexDigit, .{} },.{ Parser.optional, .{.{ Parser.sequence, .{.{.{ Parser.parseHexDigit, .{} },.{ Parser.optional, .{.{ Parser.sequence, .{.{.{ Parser.parseHexDigit, .{} },.{ Parser.optional, .{.{ Parser.sequence, .{.{.{ Parser.parseHexDigit, .{} },.{ Parser.optional, .{.{ Parser.parseHexDigit, .{} },}},}}},}},}}},}},}}},}},}}},.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{92, }}},.{ Parser.exceptString, .{&.{117, }}},.{ Parser.exceptChar, .{&.{48, 49, }}},.{ Parser.parseHexDigit, .{} },.{ Parser.parseHexDigit, .{} },.{ Parser.parseHexDigit, .{} },.{ Parser.parseHexDigit, .{} },.{ Parser.parseHexDigit, .{} },}}},}}},);
+    _ = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.sequence, .{.{
+                .{ Parser.exceptString, .{&.{
+                    92,
+                }} },
+                .{ Parser.exceptString, .{&.{
+                    117,
+                }} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.optional, .{
+                    .{ Parser.sequence, .{.{
+                        .{ Parser.parseHexDigit, .{} },
+                        .{ Parser.optional, .{
+                            .{ Parser.sequence, .{.{
+                                .{ Parser.parseHexDigit, .{} },
+                                .{ Parser.optional, .{
+                                    .{ Parser.sequence, .{.{
+                                        .{ Parser.parseHexDigit, .{} },
+                                        .{ Parser.optional, .{
+                                            .{ Parser.parseHexDigit, .{} },
+                                        } },
+                                    }} },
+                                } },
+                            }} },
+                        } },
+                    }} },
+                } },
+            }} },
+            .{ Parser.sequence, .{.{
+                .{ Parser.exceptString, .{&.{
+                    92,
+                }} },
+                .{ Parser.exceptString, .{&.{
+                    117,
+                }} },
+                .{ Parser.exceptChar, .{&.{
+                    48,
+                    49,
+                }} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+                .{ Parser.parseHexDigit, .{} },
+            }} },
+        }} },
+    );
 
     return .{
         .charunicode = .{
@@ -1064,7 +1415,6 @@ fn parseCharUnicode(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseCharUnescaped(self: *Parser) !Node {
@@ -1074,7 +1424,16 @@ fn parseCharUnescaped(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.not, .{.{ Parser.exceptString, .{&.{92, }}},}},.{ Parser.dot, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.not, .{
+                .{ Parser.exceptString, .{&.{
+                    92,
+                }} },
+            } },
+            .{ Parser.dot, .{} },
+        }} },
+    );
 
     return .{
         .charunescaped = .{
@@ -1083,7 +1442,6 @@ fn parseCharUnescaped(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseHexDigit(self: *Parser) !void {
@@ -1093,8 +1451,32 @@ fn parseHexDigit(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.exceptChar, .{&.{48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102, 65, 66, 67, 68, 69, 70, }}},);
-
+    _ = try self.require(
+        .{ Parser.exceptChar, .{&.{
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            97,
+            98,
+            99,
+            100,
+            101,
+            102,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+        }} },
+    );
 }
 
 fn parseTO(self: *Parser) !void {
@@ -1104,8 +1486,11 @@ fn parseTO(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.exceptString, .{&.{45, }}},);
-
+    _ = try self.require(
+        .{ Parser.exceptString, .{&.{
+            45,
+        }} },
+    );
 }
 
 fn parseOPENB(self: *Parser) !void {
@@ -1115,8 +1500,11 @@ fn parseOPENB(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.exceptString, .{&.{91, }}},);
-
+    _ = try self.require(
+        .{ Parser.exceptString, .{&.{
+            91,
+        }} },
+    );
 }
 
 fn parseCLOSEB(self: *Parser) !void {
@@ -1126,8 +1514,11 @@ fn parseCLOSEB(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.exceptString, .{&.{93, }}},);
-
+    _ = try self.require(
+        .{ Parser.exceptString, .{&.{
+            93,
+        }} },
+    );
 }
 
 fn parseAPOSTROPH(self: *Parser) !void {
@@ -1137,8 +1528,11 @@ fn parseAPOSTROPH(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.exceptString, .{&.{39, }}},);
-
+    _ = try self.require(
+        .{ Parser.exceptString, .{&.{
+            39,
+        }} },
+    );
 }
 
 fn parseDAPOSTROPH(self: *Parser) !void {
@@ -1148,8 +1542,11 @@ fn parseDAPOSTROPH(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.exceptString, .{&.{34, }}},);
-
+    _ = try self.require(
+        .{ Parser.exceptString, .{&.{
+            34,
+        }} },
+    );
 }
 
 fn parsePEG(self: *Parser) !void {
@@ -1159,8 +1556,84 @@ fn parsePEG(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{80, 69, 71, }}},.{ Parser.not, .{.{ Parser.exceptChar, .{&.{95, 58, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, }}},}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                80,
+                69,
+                71,
+            }} },
+            .{ Parser.not, .{
+                .{ Parser.exceptChar, .{&.{
+                    95,
+                    58,
+                    65,
+                    66,
+                    67,
+                    68,
+                    69,
+                    70,
+                    71,
+                    72,
+                    73,
+                    74,
+                    75,
+                    76,
+                    77,
+                    78,
+                    79,
+                    80,
+                    81,
+                    82,
+                    83,
+                    84,
+                    85,
+                    86,
+                    87,
+                    88,
+                    89,
+                    90,
+                    97,
+                    98,
+                    99,
+                    100,
+                    101,
+                    102,
+                    103,
+                    104,
+                    105,
+                    106,
+                    107,
+                    108,
+                    109,
+                    110,
+                    111,
+                    112,
+                    113,
+                    114,
+                    115,
+                    116,
+                    117,
+                    118,
+                    119,
+                    120,
+                    121,
+                    122,
+                    48,
+                    49,
+                    50,
+                    51,
+                    52,
+                    53,
+                    54,
+                    55,
+                    56,
+                    57,
+                }} },
+            } },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseIS(self: *Parser) !void {
@@ -1170,8 +1643,15 @@ fn parseIS(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{60, 45, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                60,
+                45,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseVOID(self: *Parser) !Node {
@@ -1181,7 +1661,17 @@ fn parseVOID(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{118, 111, 105, 100, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                118,
+                111,
+                105,
+                100,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .void = .{
@@ -1190,7 +1680,6 @@ fn parseVOID(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseLEAF(self: *Parser) !Node {
@@ -1200,7 +1689,17 @@ fn parseLEAF(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{108, 101, 97, 102, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                108,
+                101,
+                97,
+                102,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .leaf = .{
@@ -1209,7 +1708,6 @@ fn parseLEAF(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseSEMICOLON(self: *Parser) !void {
@@ -1219,8 +1717,14 @@ fn parseSEMICOLON(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{59, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                59,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseCOLON(self: *Parser) !void {
@@ -1230,8 +1734,14 @@ fn parseCOLON(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{58, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                58,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseSLASH(self: *Parser) !void {
@@ -1241,8 +1751,14 @@ fn parseSLASH(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{47, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                47,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseAND(self: *Parser) !Node {
@@ -1252,7 +1768,14 @@ fn parseAND(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{38, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                38,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .@"and" = .{
@@ -1261,7 +1784,6 @@ fn parseAND(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseNOT(self: *Parser) !Node {
@@ -1271,7 +1793,14 @@ fn parseNOT(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{33, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                33,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .not = .{
@@ -1280,7 +1809,6 @@ fn parseNOT(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseQUESTION(self: *Parser) !Node {
@@ -1290,7 +1818,14 @@ fn parseQUESTION(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{63, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                63,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .question = .{
@@ -1299,7 +1834,6 @@ fn parseQUESTION(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseSTAR(self: *Parser) !Node {
@@ -1309,7 +1843,14 @@ fn parseSTAR(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{42, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                42,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .star = .{
@@ -1318,7 +1859,6 @@ fn parseSTAR(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parsePLUS(self: *Parser) !Node {
@@ -1328,7 +1868,14 @@ fn parsePLUS(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{43, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                43,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .plus = .{
@@ -1337,7 +1884,6 @@ fn parsePLUS(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseOPEN(self: *Parser) !void {
@@ -1347,8 +1893,14 @@ fn parseOPEN(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{40, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                40,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseCLOSE(self: *Parser) !void {
@@ -1358,8 +1910,14 @@ fn parseCLOSE(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{41, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                41,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 }
 
 fn parseDOT(self: *Parser) !Node {
@@ -1369,7 +1927,14 @@ fn parseDOT(self: *Parser) !Node {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{46, }}},.{ Parser.parseWHITESPACE, .{} },}}},);
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                46,
+            }} },
+            .{ Parser.parseWHITESPACE, .{} },
+        }} },
+    );
 
     return .{
         .dot = .{
@@ -1378,7 +1943,6 @@ fn parseDOT(self: *Parser) !Node {
             .ref = self.ref,
         },
     };
-
 }
 
 fn parseWHITESPACE(self: *Parser) !void {
@@ -1388,8 +1952,20 @@ fn parseWHITESPACE(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.repeat, .{.{ Parser.choice, .{.{.{ Parser.exceptString, .{&.{32, }}},.{ Parser.exceptString, .{&.{9, }}},.{ Parser.parseEOL, .{} },.{ Parser.parseCOMMENT, .{} },}}},}},);
-
+    _ = try self.require(
+        .{ Parser.repeat, .{
+            .{ Parser.choice, .{.{
+                .{ Parser.exceptString, .{&.{
+                    32,
+                }} },
+                .{ Parser.exceptString, .{&.{
+                    9,
+                }} },
+                .{ Parser.parseEOL, .{} },
+                .{ Parser.parseCOMMENT, .{} },
+            }} },
+        } },
+    );
 }
 
 fn parseCOMMENT(self: *Parser) !void {
@@ -1399,8 +1975,22 @@ fn parseCOMMENT(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.sequence, .{.{.{ Parser.exceptString, .{&.{35, }}},.{ Parser.repeat, .{.{ Parser.sequence, .{.{.{ Parser.not, .{.{ Parser.parseEOL, .{} },}},.{ Parser.dot, .{} },}}},}},.{ Parser.parseEOL, .{} },}}},);
-
+    _ = try self.require(
+        .{ Parser.sequence, .{.{
+            .{ Parser.exceptString, .{&.{
+                35,
+            }} },
+            .{ Parser.repeat, .{
+                .{ Parser.sequence, .{.{
+                    .{ Parser.not, .{
+                        .{ Parser.parseEOL, .{} },
+                    } },
+                    .{ Parser.dot, .{} },
+                }} },
+            } },
+            .{ Parser.parseEOL, .{} },
+        }} },
+    );
 }
 
 fn parseEOL(self: *Parser) !void {
@@ -1410,8 +2000,20 @@ fn parseEOL(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.choice, .{.{.{ Parser.exceptString, .{&.{10, 13, }}},.{ Parser.exceptString, .{&.{10, }}},.{ Parser.exceptString, .{&.{13, }}},}}},);
-
+    _ = try self.require(
+        .{ Parser.choice, .{.{
+            .{ Parser.exceptString, .{&.{
+                10,
+                13,
+            }} },
+            .{ Parser.exceptString, .{&.{
+                10,
+            }} },
+            .{ Parser.exceptString, .{&.{
+                13,
+            }} },
+        }} },
+    );
 }
 
 fn parseEOF(self: *Parser) !void {
@@ -1421,15 +2023,20 @@ fn parseEOF(self: *Parser) !void {
     const start = self.store();
     errdefer self.restore(start);
 
-    _ = try self.require(.{ Parser.not, .{.{ Parser.dot, .{} },}},);
-
+    _ = try self.require(
+        .{ Parser.not, .{
+            .{ Parser.dot, .{} },
+        } },
+    );
 }
 
 pub fn parse(self: *Parser) !Node.Value {
     const start = self.store();
     errdefer self.restore(start);
 
-    const childs = try self.require(.{ Parser.parseGrammar, .{} },);
+    const childs = try self.require(
+        .{ Parser.parseGrammar, .{} },
+    );
 
     return .{
         .start = start,

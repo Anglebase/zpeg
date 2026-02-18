@@ -440,6 +440,7 @@ fn toInteger(_: *Analyzer, node: Node) u21 {
             '[' => return @intCast('['),
             ']' => return @intCast(']'),
             '\\' => return @intCast('\\'),
+            '-' => return @intCast('-'),
             else => unreachable,
         }, // \n \r \t \' \" \[ \] \\
         .charunicode => |v| return parseHex(v.str()[2..]), // \u(1)f(f(f(f(f))))
