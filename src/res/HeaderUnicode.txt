@@ -49,6 +49,7 @@ fn errorPosLessThan(_: *Parser, left: Error, right: Error) bool {
     return left.pos > right.pos;
 }
 
+/// Filter invalid error messages.
 pub fn filterError(self: *Parser) void {
     if (self.err_stack.items.len == 0) return;
     std.mem.sort(Error, self.err_stack.items, self, errorPosLessThan);

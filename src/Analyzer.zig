@@ -76,11 +76,12 @@ fn genNode(self: *Analyzer, writer: *Writer) !void {
         if (node.definition.childs.items[0] != .identifier) continue;
         const name = node.definition.childs.items[0].identifier.childs.items[0].ident.str();
         try writer.print(
-            \\            .{s} => |n| return n.start,
+            \\            .{s},
             \\
         , .{try self.toStandardName(name)});
     }
     try writer.writeAll(
+        \\            => |n| return n.start,
         \\            inline else => |n| return n.start,
         \\        }
         \\    }
@@ -97,11 +98,12 @@ fn genNode(self: *Analyzer, writer: *Writer) !void {
         if (node.definition.childs.items[0] != .identifier) continue;
         const name = node.definition.childs.items[0].identifier.childs.items[0].ident.str();
         try writer.print(
-            \\            .{s} => |n| return n.end,
+            \\            .{s},
             \\
         , .{try self.toStandardName(name)});
     }
     try writer.writeAll(
+        \\            => |n| return n.end,
         \\            inline else => |n| return n.end,
         \\        }
         \\    }
@@ -118,11 +120,12 @@ fn genNode(self: *Analyzer, writer: *Writer) !void {
         if (node.definition.childs.items[0] != .identifier) continue;
         const name = node.definition.childs.items[0].identifier.childs.items[0].ident.str();
         try writer.print(
-            \\            .{s} => |n| return n.str(),
+            \\            .{s},
             \\
         , .{try self.toStandardName(name)});
     }
     try writer.writeAll(
+        \\            => |n| return n.str(),
         \\            inline else => |n| return n.str(),
         \\        }
         \\    }
