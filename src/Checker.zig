@@ -86,10 +86,10 @@ fn getExpr(self: *Checker, name: []const u8) !*const Node {
 pub fn checkRoot(self: *Checker) !void {
     const root_ident_node = &self.root.grammar.childs.items[0].header.childs.items[0];
     const root_ident = root_ident_node.identifier.childs.items[0].ident.str();
-    _ = try self.check(root_ident, root_ident_node);
+    _ = try self.check(root_ident, root_ident_node, true);
 }
 
-pub fn check(self: *Checker, name: []const u8, node: *const Node) error{
+pub fn check(self: *Checker, name: []const u8, node: *const Node, check_left_recursion: bool) error{
     LeftRecursion,
     Unnullable,
     UndefinedIdent,
@@ -108,10 +108,10 @@ pub fn check(self: *Checker, name: []const u8, node: *const Node) error{
         return err;
     };
 
-    return try self.checkNode(expr);
+    return try self.checkNode(expr, check_left_recursion);
 }
 
-fn checkNode(self: *Checker, node: *const Node) error{
+fn checkNode(self: *Checker, node: *const Node, check_left_recursion: bool) error{
     LeftRecursion,
     Unnullable,
     UndefinedIdent,
@@ -121,28 +121,27 @@ fn checkNode(self: *Checker, node: *const Node) error{
         .expression => |v| {
             var result = false;
             for (v.childs.items) |*item| {
-                result |= try self.checkNode(item);
+                result |= try self.checkNode(item, check_left_recursion);
             }
             return result;
         },
         .sequence => |v| {
+            var result = true;
             for (v.childs.items) |*item| {
-                if (!try self.checkNode(item)) {
-                    return false;
-                }
+                result &= try self.checkNode(item, check_left_recursion & result);
             }
-            return true;
+            return result;
         },
         .prefix => |v| {
-            if (v.childs.items.len == 1) return try self.checkNode(&v.childs.items[0]);
+            if (v.childs.items.len == 1) return try self.checkNode(&v.childs.items[0], check_left_recursion);
             return true;
         },
         .suffix => |v| {
-            if (v.childs.items.len == 1) return try self.checkNode(&v.childs.items[0]);
+            if (v.childs.items.len == 1) return try self.checkNode(&v.childs.items[0], check_left_recursion);
             switch (v.childs.items[1]) {
                 .question => return true,
                 .star => {
-                    if (try self.checkNode(&v.childs.items[0])) {
+                    if (try self.checkNode(&v.childs.items[0], check_left_recursion)) {
                         try self.pushError(.{
                             .ref = node,
                             .msg = "Greedy matches are not allowed to be empty.",
@@ -153,7 +152,7 @@ fn checkNode(self: *Checker, node: *const Node) error{
                     return true;
                 },
                 .plus => {
-                    const result = try self.checkNode(&v.childs.items[0]);
+                    const result = try self.checkNode(&v.childs.items[0], check_left_recursion);
                     if (result) {
                         try self.pushError(.{
                             .ref = node,
@@ -168,7 +167,7 @@ fn checkNode(self: *Checker, node: *const Node) error{
             }
         },
         .primary => |v| {
-            return try self.checkNode(&v.childs.items[0]);
+            return try self.checkNode(&v.childs.items[0], check_left_recursion);
         },
         .identifier => |v| {
             const ident = v.childs.items[0].ident.str();
@@ -184,31 +183,35 @@ fn checkNode(self: *Checker, node: *const Node) error{
                 break :blk null;
             };
             if (access) |pos| {
-                const allocator = self.arena.allocator();
-                var msg: []const u8 = ident;
-                var should_free = false;
-                defer if (should_free) {
-                    allocator.free(msg);
-                };
-                for (self.accessing.items[(pos + 1)..], 0..) |item, i| {
-                    const before = msg;
-                    defer if (i != 0) allocator.free(before);
-                    msg = try std.fmt.allocPrint(allocator, "{s} -> {s}", .{ msg, item });
-                    should_free = true;
+                if (check_left_recursion) {
+                    const allocator = self.arena.allocator();
+                    var msg: []const u8 = ident;
+                    var should_free = false;
+                    defer if (should_free) {
+                        allocator.free(msg);
+                    };
+                    for (self.accessing.items[(pos + 1)..], 0..) |item, i| {
+                        const before = msg;
+                        defer if (i != 0) allocator.free(before);
+                        msg = try std.fmt.allocPrint(allocator, "{s} -> {s}", .{ msg, item });
+                        should_free = true;
+                    }
+                    try self.pushError(.{
+                        .ref = node,
+                        .msg = try std.fmt.allocPrint(
+                            allocator,
+                            "Detected left recursive path: {s} -> {s}",
+                            .{ msg, ident },
+                        ),
+                        .tag = .left_recursion,
+                    });
+                    return error.LeftRecursion;
+                } else {
+                    return false;
                 }
-                try self.pushError(.{
-                    .ref = node,
-                    .msg = try std.fmt.allocPrint(
-                        allocator,
-                        "Detected left recursive path: {s} -> {s}",
-                        .{ msg, ident },
-                    ),
-                    .tag = .left_recursion,
-                });
-                return error.LeftRecursion;
             }
             try self.accessing.append(self.arena.allocator(), ident);
-            const result = try self.check(ident, node);
+            const result = try self.check(ident, node, check_left_recursion);
             _ = self.accessing.pop();
             try self.accessed.put(ident, result);
             if (result) {
